@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import SignUp from './components/SignUp';
+import Settings from './components/Settings';
+import { supabase } from './supabaseClient';
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 const SB_URL = "https://yultwpihlrrgzelkyidv.supabase.co";
@@ -203,45 +206,76 @@ function DbStatusBar({ status, turmasCount, erro }) {
   return <div className="db-bar ok"><div className="db-dot" />Supabase conectado · {turmasCount} turmas carregadas</div>;
 }
 
-// ─── LOGIN ─────────────────────────────────────────────────────────────────────
+// ─── LOGIN ATUALIZADO (SUPABASE + ALUNOS) ──────────────────────────────────────
 function Login({ onLogin, alunos }) {
-  const [user, setUser] = useState("");
+  const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
 
-  const handle = () => {
-    // 1. Tenta logar como Admin
-    if (user.toLowerCase() === "admin" && pass === "admin123") {
-      onLogin({ username: "Admin", role: "admin" });
-      return;
-    }
-    
-    // 2. Tenta logar como Aluno Real do Banco
-    const alunoEncontrado = alunos.find(a => a.nome.toLowerCase() === user.toLowerCase());
+  const handle = async () => {
+    // 1. Tenta logar como Aluno (Mantém o acesso dos alunos intacto)
+    const alunoEncontrado = alunos.find(a => a.nome.toLowerCase() === email.toLowerCase());
     if (alunoEncontrado && pass === "123") {
       onLogin({ username: alunoEncontrado.nome, role: "aluno", alunoId: alunoEncontrado.id });
       return;
     }
 
-    alert("Credenciais inválidas.\n\nPara Admin: admin / admin123\nPara Aluno: Digite o Nome Completo / Senha: 123");
+    // 2. Fluxo do Supabase (Admin / Conta Real)
+    if (isSignUp) {
+      // Cria a conta no banco de dados
+      const { error } = await supabase.auth.signUp({ email: email, password: pass });
+      if (error) alert("Erro no cadastro: " + error.message);
+      else {
+        alert("Conta criada com sucesso! Faça login agora.");
+        setIsSignUp(false); // Volta para a tela de entrar
+      }
+    } else {
+      // Faz o login no banco de dados
+      const { data, error } = await supabase.auth.signInWithPassword({ email: email, password: pass });
+      if (error) {
+        alert("Credenciais inválidas. Verifique o e-mail/nome ou a senha.");
+      } else {
+        // Logou com sucesso no Supabase!
+        onLogin({ username: "Admin", role: "admin" }); 
+      }
+    }
   };
 
   return (
     <div className="login-wrap">
       <div className="login-card">
         <div className="login-logo">OSS<span>.</span>TRACK</div>
-        <div className="login-sub" style={{marginBottom:"32px"}}>Sistema de Presença — BJJ</div>
-        <div className="input-group">
-          <label>Usuário (Admin ou Nome do Aluno)</label>
-          <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="Ex: João da Silva" onKeyDown={(e) => e.key === "Enter" && handle()} />
+        <div className="login-sub" style={{marginBottom:"32px"}}>
+          {isSignUp ? "Criar Conta Admin" : "Sistema de Presença — BJJ"}
         </div>
+        
+        <div className="input-group">
+          <label>{isSignUp ? "E-mail de Cadastro" : "E-mail (Admin) ou Nome (Aluno)"}</label>
+          <input 
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)} 
+            placeholder={isSignUp ? "seu@email.com" : "Ex: João da Silva"} 
+            onKeyDown={(e) => e.key === "Enter" && handle()} 
+          />
+        </div>
+        
         <div className="input-group">
           <label>Senha</label>
-          <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="••••••" onKeyDown={(e) => e.key === "Enter" && handle()} />
+          <input 
+            type="password" 
+            value={pass} 
+            onChange={(e) => setPass(e.target.value)} 
+            placeholder="••••••" 
+            onKeyDown={(e) => e.key === "Enter" && handle()} 
+          />
         </div>
-        <button className="btn-primary" onClick={handle} style={{marginTop:"8px"}}>ENTRAR</button>
-        <div style={{ color: "var(--muted)", fontSize: "0.75rem", marginTop: "20px", textAlign: "center", lineHeight: "1.6" }}>
-          <strong>Admin:</strong> admin / admin123<br />
-          <strong>Aluno:</strong> Nome exato cadastrado / 123
+        
+        <button className="btn-primary" onClick={handle} style={{marginTop:"8px"}}>
+          {isSignUp ? "CADASTRAR E-MAIL" : "ENTRAR"}
+        </button>
+        
+        <div style={{ marginTop: "24px", textAlign: "center", fontSize: "0.85rem" }}>
+          {/* O link de criar conta foi removido por segurança */}
         </div>
       </div>
     </div>
@@ -713,23 +747,32 @@ function AdminView({ turmas, alunos, carregarBanco }) {
       )}
 
       {tab === "config" && (
-        <div className="card">
-          <div className="section-title">Gerenciar Turmas</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            {turmas.map(t => (
-              <div key={t.id} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", padding: "16px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface2)", gap: "12px" }}>
-                <div>
-                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.1rem", letterSpacing: "1px" }}>{t.nome}</div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "4px" }}>{t.horario} &nbsp;•&nbsp; {t.dias}</div>
-                </div>
-                <button className="filter-btn" style={{ fontWeight: 600 }} onClick={() => abrirModalTurmaEditar(t)}>
-                  ✏️ EDITAR
-                </button>
-              </div>
-            ))}
+  <>
+    {/* Aqui entra o seu novo componente de Perfil */}
+    <div className="card" style={{ marginBottom: "20px" }}>
+      <div className="section-title">Minha Conta</div>
+      <Settings />
+    </div>
+
+    {/* E aqui continua o gerenciamento de turmas que já existia */}
+    <div className="card">
+      <div className="section-title">Gerenciar Turmas</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        {turmas.map(t => (
+          <div key={t.id} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", padding: "16px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface2)", gap: "12px" }}>
+            <div>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.1rem", letterSpacing: "1px" }}>{t.nome}</div>
+              <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "4px" }}>{t.horario} &nbsp;•&nbsp; {t.dias}</div>
+            </div>
+            <button className="filter-btn" style={{ fontWeight: 600 }} onClick={() => abrirModalTurmaEditar(t)}>
+              ✏️ EDITAR
+            </button>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
+    </div>
+  </>
+)}
     </div>
   );
 }
