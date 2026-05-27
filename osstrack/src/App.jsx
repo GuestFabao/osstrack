@@ -312,8 +312,6 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
     }
   };
 
-  // --- Dentro do AlunoView, substitua a parte do 'days' por isto ---
-  
   const date = new Date();
   const year = date.getFullYear();
   const month = date.getMonth();
@@ -430,6 +428,38 @@ function AdminView({ turmas, alunos, carregarBanco }) {
   const [modalTurmaOpen, setModalTurmaOpen] = useState(false);
   const [formTurma, setFormTurma] = useState({ id: null, nome: "", horario: "", dias: "" });
   const [salvando, setSalvando] = useState(false);
+
+  // NOVA FUNÇÃO: Dar ou remover presença manualmente pelo painel admin
+  const togglePresencaManual = async (aluno) => {
+    const presencaHoje = aluno.presencas?.find(p => p.data === TODAY);
+
+    if (presencaHoje) {
+      // Se o aluno já tem presença hoje, o clique remove a presença
+      if (!window.confirm(`Deseja remover a presença de ${aluno.nome}?`)) return;
+      try {
+        await db.delete("presencas", presencaHoje.id);
+        await carregarBanco(); // Atualiza a tela na hora
+      } catch (err) {
+        alert("Erro ao remover presença: " + err.message);
+      }
+    } else {
+      // Se o aluno está ausente, o clique lança a presença manualmente
+      try {
+        const now = new Date();
+        const hora = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        
+        await db.post("presencas", {
+          aluno_id: aluno.id,
+          turma_id: aluno.turma_id,
+          data: TODAY,
+          hora: hora
+        });
+        await carregarBanco(); // Atualiza a tela na hora
+      } catch (err) {
+        alert("Erro ao lançar presença manual: " + err.message);
+      }
+    }
+  };
 
   const presencasHoje = alunos.filter((a) => a.presencas?.some((p) => p.data === TODAY));
   const faltasHoje = alunos.length - presencasHoje.length;
@@ -645,39 +675,60 @@ function AdminView({ turmas, alunos, carregarBanco }) {
         </>
       )}
 
+      {/* ─── ABA HOJE (ATUALIZADA) ────────────────────────────────── */}
       {tab === "hoje" && (
         <div className="grid-2">
+          {/* COLUNA DE PRESENTES */}
           <div className="card" style={{ padding: "16px 20px" }}>
             <div className="section-title" style={{ color: "var(--green)", marginBottom: "20px" }}>✓ Presentes ({presencasHoje.length})</div>
             {presencasHoje.map((a) => {
               const p = a.presencas.find((x) => x.data === TODAY);
               const turmaNome = turmas.find(t => t.id === p?.turma_id)?.nome || turmas.find(t => t.id === a.turma_id)?.nome;
               return (
-                <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
+                <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)} style={{ display: "flex", alignItems: "center", width: "100%" }}>
                   <div className="avatar" style={{ background: "#14532d", color: "#4ade80" }}>{a.foto}</div>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div>
                     <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{turmaNome} · {p?.hora?.substring(0, 5)}</div>
                   </div>
-                  <span className="badge-faixa" style={{ marginLeft: "auto", background: FAIXA_COLORS[a.faixa] }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginLeft: "auto" }}>
+                    <span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); togglePresencaManual(a); }} 
+                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem", color: "var(--red)" }}
+                      title="Remover Presença"
+                    >
+                      ❌
+                    </button>
+                  </div>
                 </div>
               );
             })}
             {presencasHoje.length === 0 && <p style={{color: "var(--muted)", fontSize: "0.85rem"}}>Ninguém fez check-in ainda.</p>}
           </div>
 
+          {/* COLUNA DE AUSENTES */}
           <div className="card" style={{ padding: "16px 20px" }}>
             <div className="section-title" style={{ color: "var(--red)", marginBottom: "20px" }}>✗ Ausentes ({faltasHoje})</div>
             {alunos.filter((a) => !a.presencas?.some((p) => p.data === TODAY)).map((a) => {
               const turmaNome = turmas.find(t => t.id === a.turma_id)?.nome;
               return (
-                <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
+                <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)} style={{ display: "flex", alignItems: "center", width: "100%" }}>
                   <div className="avatar" style={{ background: "#450a0a", color: "#f87171" }}>{a.foto}</div>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div>
                     <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{turmaNome}</div>
                   </div>
-                  <span className="badge-faixa" style={{ marginLeft: "auto", background: FAIXA_COLORS[a.faixa] }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginLeft: "auto" }}>
+                    <span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); togglePresencaManual(a); }} 
+                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem", color: "var(--green)" }}
+                      title="Dar Presença Manual"
+                    >
+                      ✅
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -747,32 +798,32 @@ function AdminView({ turmas, alunos, carregarBanco }) {
       )}
 
       {tab === "config" && (
-  <>
-    {/* Aqui entra o seu novo componente de Perfil */}
-    <div className="card" style={{ marginBottom: "20px" }}>
-      <div className="section-title">Minha Conta</div>
-      <Settings />
-    </div>
-
-    {/* E aqui continua o gerenciamento de turmas que já existia */}
-    <div className="card">
-      <div className="section-title">Gerenciar Turmas</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        {turmas.map(t => (
-          <div key={t.id} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", padding: "16px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface2)", gap: "12px" }}>
-            <div>
-              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.1rem", letterSpacing: "1px" }}>{t.nome}</div>
-              <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "4px" }}>{t.horario} &nbsp;•&nbsp; {t.dias}</div>
-            </div>
-            <button className="filter-btn" style={{ fontWeight: 600 }} onClick={() => abrirModalTurmaEditar(t)}>
-              ✏️ EDITAR
-            </button>
+        <>
+          {/* Aqui entra o seu novo componente de Perfil */}
+          <div className="card" style={{ marginBottom: "20px" }}>
+            <div className="section-title">Minha Conta</div>
+            <Settings />
           </div>
-        ))}
-      </div>
-    </div>
-  </>
-)}
+
+          {/* E aqui continua o gerenciamento de turmas que já existia */}
+          <div className="card">
+            <div className="section-title">Gerenciar Turmas</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              {turmas.map(t => (
+                <div key={t.id} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", padding: "16px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface2)", gap: "12px" }}>
+                  <div>
+                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.1rem", letterSpacing: "1px" }}>{t.nome}</div>
+                    <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "4px" }}>{t.horario} &nbsp;•&nbsp; {t.dias}</div>
+                  </div>
+                  <button className="filter-btn" style={{ fontWeight: 600 }} onClick={() => abrirModalTurmaEditar(t)}>
+                    ✏️ EDITAR
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
