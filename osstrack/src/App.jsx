@@ -172,6 +172,10 @@ const css = `
   .nav-user { font-size: 0.82rem; color: var(--muted); }
   .btn-logout { background: var(--border); border: none; color: var(--muted); font-family: inherit; font-size: 0.78rem; padding: 5px 10px; border-radius: 6px; cursor: pointer; transition: all 0.15s; }
   .btn-logout:hover { background: var(--red-dim); color: white; }
+  
+  /* SELECT DA ACADEMIA */
+  .academy-select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 0.8rem; font-family: inherit; outline: none; cursor: pointer; }
+  .academy-select:focus { border-color: var(--red); }
 
   /* ADMIN HEADER & FILTERS */
   .page-header { margin-bottom: 24px; }
@@ -264,7 +268,6 @@ function Settings() {
       return;
     }
     try {
-      // Autentica com a senha atual para confirmar identidade
       const data = await auth.signIn(email, senhaAtual);
       if (data.access_token) {
         setMsg("✓ Identidade confirmada. Funcionalidade de troca de senha disponível na versão com Supabase SDK completo.");
@@ -308,7 +311,6 @@ function Login({ onLogin, alunos }) {
     setErro("");
     setCarregando(true);
     try {
-      // 1. Tenta como aluno (por nome, senha fixa "123")
       const alunoEncontrado = alunos.find(
         (a) => a.nome.toLowerCase() === email.toLowerCase()
       );
@@ -316,8 +318,6 @@ function Login({ onLogin, alunos }) {
         onLogin({ username: alunoEncontrado.nome, role: "aluno", alunoId: alunoEncontrado.id });
         return;
       }
-
-      // 2. Fluxo admin via Supabase Auth
       await auth.signIn(email, pass);
       onLogin({ username: email.split("@")[0], role: "admin" });
     } catch (e) {
@@ -361,7 +361,6 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
 
   if (!aluno) return <div className="main"><p style={{ color: "var(--muted)" }}>Carregando perfil…</p></div>;
 
-  // Lógica de estado do botão
   let btnText = "CHECK-IN", btnSub = "Toque para marcar", isDisabled = false;
   if (checkedIn) {
     btnText = "PRESENTE!"; btnSub = "Oss! Boa aula!"; isDisabled = true;
@@ -408,7 +407,6 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
     }
   };
 
-  // Calendário do mês atual
   const date = new Date();
   const year = date.getFullYear(), month = date.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -496,7 +494,7 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
 }
 
 // ─── ADMIN VIEW ────────────────────────────────────────────────────────────────
-function AdminView({ turmas, alunos, carregarBanco }) {
+function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
   const [tab, setTab] = useState("dashboard");
   const [filtroTurma, setFiltroTurma] = useState("Todas");
   const [detalhe, setDetalhe] = useState(null);
@@ -538,7 +536,11 @@ function AdminView({ turmas, alunos, carregarBanco }) {
   const freqMedia = alunos.length ? Math.round(alunos.reduce((s, a) => s + calcFreq(a).pct, 0) / alunos.length) : 0;
   const alunosFiltrados = filtroTurma === "Todas" ? alunos : alunos.filter((a) => turmas.find((t) => t.id === a.turma_id)?.nome === filtroTurma);
 
-  const abrirModalAlunoNovo = () => { setFormAluno({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: turmas[0]?.id || "" }); setModalAlunoOpen(true); };
+  const abrirModalAlunoNovo = () => {
+    if (turmas.length === 0) return alert("Cadastre uma turma nesta unidade primeiro!");
+    setFormAluno({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: turmas[0]?.id || "" }); 
+    setModalAlunoOpen(true); 
+  };
   const abrirModalAlunoEditar = (a) => { setFormAluno({ id: a.id, nome: a.nome, faixa: a.faixa, graus: String(a.graus || 0), turma_id: a.turma_id }); setModalAlunoOpen(true); };
 
   const excluirAluno = async (id) => {
@@ -552,26 +554,39 @@ function AdminView({ turmas, alunos, carregarBanco }) {
     if (!formAluno.nome || !formAluno.turma_id) return alert("Preencha nome e turma!");
     setSalvando(true);
     try {
-      const payload = { nome: formAluno.nome, faixa: formAluno.faixa, graus: parseInt(formAluno.graus), turma_id: formAluno.turma_id };
+      const payload = { 
+        nome: formAluno.nome, 
+        faixa: formAluno.faixa, 
+        graus: parseInt(formAluno.graus), 
+        turma_id: formAluno.turma_id,
+        academia_id: academiaAtual?.id // <-- Vínculo Inteligente com a academia
+      };
       if (formAluno.id) { await db.patch("alunos", formAluno.id, payload); if (detalhe?.id === formAluno.id) setDetalhe({ ...detalhe, ...payload }); }
       else await db.post("alunos", payload);
       await carregarBanco(); setModalAlunoOpen(false);
     } catch (err) { alert("Erro: " + err.message); } finally { setSalvando(false); }
   };
 
+  const abrirModalTurmaNova = () => { setFormTurma({ id: null, nome: "", horario: "", dias: "" }); setModalTurmaOpen(true); };
   const abrirModalTurmaEditar = (t) => { setFormTurma({ id: t.id, nome: t.nome, horario: t.horario, dias: t.dias }); setModalTurmaOpen(true); };
 
   const salvarTurma = async (e) => {
     e.preventDefault();
     if (!formTurma.nome || !formTurma.horario) return alert("Nome e horário obrigatórios!");
     setSalvando(true);
-    try { await db.patch("turmas", formTurma.id, { nome: formTurma.nome, horario: formTurma.horario, dias: formTurma.dias }); await carregarBanco(); setModalTurmaOpen(false); }
+    try { 
+      if (formTurma.id) {
+        await db.patch("turmas", formTurma.id, { nome: formTurma.nome, horario: formTurma.horario, dias: formTurma.dias }); 
+      } else {
+        await db.post("turmas", { nome: formTurma.nome, horario: formTurma.horario, dias: formTurma.dias, academia_id: academiaAtual?.id });
+      }
+      await carregarBanco(); setModalTurmaOpen(false); 
+    }
     catch (err) { alert("Erro: " + err.message); } finally { setSalvando(false); }
   };
 
   return (
     <div className="main">
-
       {/* MODAL SAIR */}
       {showExitModal && (
         <div className="modal-overlay">
@@ -580,7 +595,7 @@ function AdminView({ turmas, alunos, carregarBanco }) {
             <p style={{ color: "var(--muted)", fontSize: "0.88rem", marginBottom: "24px" }}>Você realmente deseja fechar o OSS.TRACK?</p>
             <div style={{ display: "flex", gap: "12px" }}>
               <button className="btn-secondary" onClick={() => setShowExitModal(false)}>CANCELAR</button>
-              <button className="btn-danger" onClick={() => window.close()}>SAIR</button>
+              <button className="btn-danger" onClick={() => window.history.back()}>SAIR</button>
             </div>
           </div>
         </div>
@@ -610,7 +625,7 @@ function AdminView({ turmas, alunos, carregarBanco }) {
         <div className="modal-overlay">
           <div className="modal-box">
             <button className="btn-close" onClick={() => setModalTurmaOpen(false)}>✕</button>
-            <div className="modal-title">EDITAR TURMA</div>
+            <div className="modal-title">{formTurma.id ? "EDITAR TURMA" : "NOVA TURMA"}</div>
             <form onSubmit={salvarTurma}>
               <div className="input-group"><label>Nome</label><input autoFocus value={formTurma.nome} onChange={(e) => setFormTurma({ ...formTurma, nome: e.target.value })} placeholder="Ex: Manhã" /></div>
               <div className="input-group"><label>Horário</label><input value={formTurma.horario} onChange={(e) => setFormTurma({ ...formTurma, horario: e.target.value })} placeholder="Ex: 07:00 – 08:30" /></div>
@@ -742,6 +757,7 @@ function AdminView({ turmas, alunos, carregarBanco }) {
       {/* TURMAS */}
       {tab === "turmas" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          {turmas.length === 0 && <p style={{ color: "var(--muted)" }}>Nenhuma turma nesta unidade.</p>}
           {turmas.map((t) => {
             const qAlunos = alunos.filter((a) => a.turma_id === t.id).length;
             return (
@@ -805,8 +821,12 @@ function AdminView({ turmas, alunos, carregarBanco }) {
             <Settings />
           </div>
           <div className="card">
-            <div className="section-title">Gerenciar Turmas</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <div className="section-title" style={{ margin: 0 }}>Gerenciar Turmas</div>
+              <button className="btn-primary" style={{ width: "auto", padding: "6px 14px", fontSize: "0.85rem" }} onClick={abrirModalTurmaNova}>+ NOVA TURMA</button>
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              {turmas.length === 0 && <p style={{ color: "var(--muted)" }}>Nenhuma turma nesta unidade.</p>}
               {turmas.map((t) => (
                 <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface2)", gap: "12px", flexWrap: "wrap" }}>
                   <div>
@@ -826,29 +846,63 @@ function AdminView({ turmas, alunos, carregarBanco }) {
 
 // ─── ROOT ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  // Persistência de login via localStorage (fallback seguro se indisponível)
   const [session, setSession] = useState(() => store.get("osstrack_session"));
+  
+  // ESTADOS DO MULTI-TENANCY 
+  const [academias, setAcademias] = useState([]);
+  const [academiaAtual, setAcademiaAtual] = useState(() => store.get("osstrack_academia") || null);
+  
   const [turmas, setTurmas] = useState([]);
   const [alunos, setAlunos] = useState([]);
   const [dbStatus, setDbStatus] = useState("loading");
   const [dbErro, setDbErro] = useState("");
 
-  // Salva/limpa sessão sempre que mudar
+  // Salva sessão no navegador
   useEffect(() => {
     if (session) store.set("osstrack_session", session);
     else store.remove("osstrack_session");
   }, [session]);
 
-  const carregarBanco = async () => {
+  // Salva academia no navegador
+  useEffect(() => {
+    if (academiaAtual) store.set("osstrack_academia", academiaAtual);
+  }, [academiaAtual]);
+
+  // MOTOR DE BUSCA OTIMIZADO (Filtra direto no Banco de Dados)
+  const carregarBanco = async (idForcado = null) => {
     try {
       setDbStatus("loading");
-      const turmasData = await db.get("turmas", "?order=created_at");
+      
+      let idAtivo = idForcado || academiaAtual?.id;
+      
+      // 1. Carrega as academias se precisar
+      const academiasData = await db.get("academias", "?order=nome");
+      if (Array.isArray(academiasData)) {
+        setAcademias(academiasData);
+        if (!idAtivo && academiasData.length > 0) {
+          idAtivo = academiasData[0].id;
+          setAcademiaAtual(academiasData[0]);
+        }
+      }
+
+      // Se não tem academia nenhuma no banco, encerra a busca com a tela limpa
+      if (!idAtivo) {
+         setTurmas([]);
+         setAlunos([]);
+         setDbStatus("ok");
+         return;
+      }
+
+      // 2. Busca Turmas filtrando por Academia
+      const turmasData = await db.get("turmas", `?academia_id=eq.${idAtivo}&order=created_at`);
       if (!Array.isArray(turmasData)) throw new Error(turmasData?.message || "Erro nas turmas");
       setTurmas(turmasData);
 
-      const alunosData = await db.get("alunos", "?select=*,presencas(*)&order=nome");
+      // 3. Busca Alunos filtrando por Academia
+      const alunosData = await db.get("alunos", `?academia_id=eq.${idAtivo}&select=*,presencas(*)&order=nome`);
       if (!Array.isArray(alunosData)) throw new Error(alunosData?.message || "Erro nos alunos");
       setAlunos(alunosData.map((a) => ({ ...a, foto: getIniciais(a.nome), presencas: a.presencas || [] })));
+      
       setDbStatus("ok");
     } catch (e) {
       setDbErro(e.message);
@@ -856,6 +910,7 @@ export default function App() {
     }
   };
 
+  // Roda assim que o app liga
   useEffect(() => { carregarBanco(); }, []);
 
   const alunoLogado = session?.role === "aluno" ? alunos.find((a) => a.id === session.alunoId) : null;
@@ -872,12 +927,30 @@ export default function App() {
             <nav className="topnav">
               <div className="nav-logo">OSS<span>.</span>TRACK</div>
               <div className="nav-right">
+                
+                {/* MENU DE ACADEMIAS */}
+                {session.role === "admin" && academias.length > 0 && (
+                  <select 
+                    className="academy-select"
+                    value={academiaAtual?.id || ""} 
+                    onChange={(e) => {
+                      const nova = academias.find(a => a.id === e.target.value);
+                      setAcademiaAtual(nova);
+                      carregarBanco(nova.id); // Força a buscar os dados da nova unidade na hora
+                    }}
+                  >
+                    {academias.map(a => (
+                      <option key={a.id} value={a.id}>{a.nome}</option>
+                    ))}
+                  </select>
+                )}
+
                 <span className="nav-user">{session.username} · {session.role === "admin" ? "Admin" : "Aluno"}</span>
                 <button className="btn-logout" onClick={() => setSession(null)}>Sair</button>
               </div>
             </nav>
             {session.role === "admin"
-              ? <AdminView turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} />
+              ? <AdminView turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} academiaAtual={academiaAtual} />
               : <AlunoView aluno={alunoLogado} turmas={turmas} carregarBanco={carregarBanco} />
             }
           </>
