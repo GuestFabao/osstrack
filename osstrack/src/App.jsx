@@ -994,10 +994,15 @@ export default function App() {
                 <button className="btn-logout" onClick={() => setSession(null)}>Sair</button>
               </div>
             </nav>
-            {session.role === "admin" 
-              ? <AdminView turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} />
-              : <AlunoView aluno={alunos.find(a => a.id === session.alunoId)} turmas={turmas} carregarBanco={carregarBanco} />
-            }
+            {session.role === "admin" ? (
+              <AdminView turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} />
+            ) : (
+              alunos.length > 0 ? (
+                <AlunoView aluno={alunos.find(a => a.id === session.alunoId)} turmas={turmas} carregarBanco={carregarBanco} />
+              ) : (
+                <div style={{ padding: "40px", textAlign: "center", color: "var(--muted)" }}>Carregando dados do aluno...</div>
+              )
+            )}
           </>
         )}
       </div>
