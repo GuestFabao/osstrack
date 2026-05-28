@@ -79,8 +79,15 @@ const store = {
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 const FAIXA_COLORS = {
-  Branca: "#e5e5e5", Azul: "#3b82f6", Roxa: "#8b5cf6",
-  Marrom: "#92400e", Preta: "#1a1a1a",
+  Branca: "#e5e5e5", 
+  Cinza: "#9ca3af",
+  Amarela: "#eab308",
+  Laranja: "#f97316",
+  Verde: "#22c55e",
+  Azul: "#3b82f6", 
+  Roxa: "#8b5cf6",
+  Marrom: "#92400e", 
+  Preta: "#1a1a1a",
 };
 const TODAY = new Date().toISOString().split("T")[0];
 
@@ -110,15 +117,28 @@ const parseHorario = (horarioStr) => {
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  html, body { overflow-x: hidden; width: 100%; position: relative; }
+  
   :root {
     --bg: #0a0a0a; --surface: #141414; --surface2: #1e1e1e;
     --border: #2a2a2a; --red: #dc2626; --red-dim: #7f1d1d;
     --gold: #d97706; --text: #f0f0f0; --muted: #6b6b6b;
     --green: #16a34a; --radius: 12px;
   }
+  
   body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; }
-  .app { min-height: 100vh; display: flex; flex-direction: column; }
+  .app { min-height: 100vh; display: flex; flex-direction: column; width: 100%; overflow-x: hidden; }
 
+  .main { flex: 1; padding: 16px; width: 100%; max-width: 1000px; margin: 0 auto; overflow-x: hidden; }
+  
+  .grid-2 { display: grid; grid-template-columns: 1fr; gap: 16px; width: 100%; }
+  @media (min-width: 768px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
+  .grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+  @media (min-width: 768px) { .grid-4 { grid-template-columns: repeat(4, 1fr); } }
+  
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; width: 100%; overflow: hidden; }
+  
   /* DB STATUS BAR */
   .db-bar { padding: 7px 20px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
   .db-bar.ok { background: #052e16; color: #4ade80; }
@@ -128,11 +148,6 @@ const css = `
   .db-bar.ok .db-dot { animation: pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-  /* GERAIS */
-  .main { flex: 1; padding: 24px 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
-  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
   .section-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: 2px; margin-bottom: 16px; }
 
   /* LOGIN */
@@ -159,22 +174,21 @@ const css = `
 
   /* MODAL */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 299; display: flex; align-items: center; justify-content: center; padding: 20px; }
-  .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 420px; padding: 28px; position: relative; animation: slideUp 0.2s ease; }
+  .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 420px; padding: 28px; position: relative; animation: slideUp 0.2s ease; max-height: 90vh; overflow-y: auto; }
   @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 2px; margin-bottom: 20px; }
-  .btn-close { position: absolute; top: 20px; right: 20px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; }
+  .modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 2px; margin-bottom: 20px; text-align: center; }
+  .btn-close { position: absolute; top: 20px; right: 20px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; z-index: 10; }
 
   /* TOPNAV */
   .topnav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 56px; position: sticky; top: 0; z-index: 100; }
   .nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; letter-spacing: 2px; }
   .nav-logo span { color: var(--red); }
-  .nav-right { display: flex; align-items: center; gap: 12px; }
-  .nav-user { font-size: 0.82rem; color: var(--muted); }
+  .nav-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .nav-user { font-size: 0.82rem; color: var(--muted); display: none; }
+  @media (min-width: 480px) { .nav-user { display: inline-block; } }
   .btn-logout { background: var(--border); border: none; color: var(--muted); font-family: inherit; font-size: 0.78rem; padding: 5px 10px; border-radius: 6px; cursor: pointer; transition: all 0.15s; }
   .btn-logout:hover { background: var(--red-dim); color: white; }
-  
-  /* SELECT DA ACADEMIA */
-  .academy-select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 0.8rem; font-family: inherit; outline: none; cursor: pointer; }
+  .academy-select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 0.8rem; font-family: inherit; outline: none; cursor: pointer; max-width: 150px; }
   .academy-select:focus { border-color: var(--red); }
 
   /* ADMIN HEADER & FILTERS */
@@ -186,8 +200,8 @@ const css = `
   .filter-btn.active { background: var(--red); border-color: var(--red); color: white; }
 
   /* TABLE & BADGES */
-  .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  .table-wrap { overflow-x: auto; width: 100%; max-width: 100%; }
+  table { width: 100%; min-width: 300px; border-collapse: collapse; font-size: 0.88rem; }
   th { text-align: left; padding: 10px 14px; color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); }
   td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
@@ -195,7 +209,7 @@ const css = `
   .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 500; }
   .badge-presente { background: #14532d; color: #4ade80; }
   .badge-faixa { display: inline-block; width: 32px; height: 8px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.1); }
-  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; flex-shrink: 0; background: var(--red-dim); }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; flex-shrink: 0; background: var(--red-dim); overflow: hidden; }
 
   /* STAT CARDS */
   .stat-card { display: flex; flex-direction: column; gap: 6px; }
@@ -209,16 +223,16 @@ const css = `
   .prog-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
 
   /* DETAIL PANEL */
-  .detail-panel { position: fixed; right: 0; top: 0; bottom: 0; width: 360px; background: var(--surface); border-left: 1px solid var(--border); padding: 24px; z-index: 200; overflow-y: auto; animation: slideIn 0.25s ease; display: flex; flex-direction: column; }
+  .detail-panel { position: fixed; right: 0; top: 0; bottom: 0; width: 360px; max-width: 100%; background: var(--surface); border-left: 1px solid var(--border); padding: 24px; z-index: 200; overflow-y: auto; animation: slideIn 0.25s ease; display: flex; flex-direction: column; }
   @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
   .hoje-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
   .hoje-item:hover { background: var(--surface2); }
   .hoje-item:last-child { border-bottom: none; }
 
   /* ALUNO VIEW */
-  .aluno-hero { background: linear-gradient(135deg, #1a0000 0%, var(--surface) 60%); border: 1px solid var(--border); border-radius: 16px; padding: 28px; margin-bottom: 24px; display: flex; align-items: center; gap: 24px; position: relative; overflow: hidden; }
+  .aluno-hero { background: linear-gradient(135deg, #1a0000 0%, var(--surface) 60%); border: 1px solid var(--border); border-radius: 16px; padding: 28px; margin-bottom: 24px; display: flex; align-items: center; gap: 24px; position: relative; overflow: hidden; flex-wrap: wrap; }
   .aluno-hero::after { content: 'BJJ'; position: absolute; right: -10px; top: 50%; transform: translateY(-50%); font-family: 'Bebas Neue', sans-serif; font-size: 7rem; color: rgba(255,255,255,0.03); letter-spacing: 4px; pointer-events: none; }
-  .aluno-avatar { width: 72px; height: 72px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 1px; flex-shrink: 0; }
+  .aluno-avatar { width: 72px; height: 72px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 1px; flex-shrink: 0; overflow: hidden; }
   .aluno-nome { font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; letter-spacing: 2px; }
   .aluno-meta { font-size: 0.83rem; color: var(--muted); margin-top: 2px; }
 
@@ -234,18 +248,15 @@ const css = `
   .aula-info { margin-top: 16px; font-size: 0.83rem; color: var(--muted); }
   .aula-info strong { color: var(--text); }
 
-  /* HISTÓRICO */
-  .hist-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  /* HISTÓRICO - Fix para o calendário não estourar */
+  .hist-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; width: 100%; max-width: 300px; margin: 0 auto; }
   .hist-day { aspect-ratio: 1; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: var(--muted); transition: transform 0.15s; }
   .hist-day.presente { background: #14532d; color: #4ade80; font-weight: 600; }
   .hist-day.falta { background: var(--surface2); }
   .hist-day:hover { transform: scale(1.15); }
-  .hist-legend { display: flex; gap: 16px; margin-top: 12px; font-size: 0.75rem; color: var(--muted); }
+  .hist-legend { display: flex; gap: 16px; margin-top: 12px; font-size: 0.75rem; color: var(--muted); justify-content: center; }
   .hist-legend span { display: flex; align-items: center; gap: 6px; }
   .dot { width: 10px; height: 10px; border-radius: 2px; }
-
-  @media (max-width: 720px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } .grid-2 { grid-template-columns: 1fr; } .detail-panel { width: 100%; } }
-  @media (max-width: 480px) { .nav-user { display: none; } }
 `;
 
 // ─── DB STATUS BAR ─────────────────────────────────────────────────────────────
@@ -255,7 +266,7 @@ function DbStatusBar({ status, turmasCount, erro }) {
   return <div className="db-bar ok"><div className="db-dot" />Supabase conectado · {turmasCount} turmas carregadas</div>;
 }
 
-// ─── SETTINGS (inline, substitui ./components/Settings) ──────────────────────
+// ─── SETTINGS ──────────────────────────────────────────────────────
 function Settings() {
   const [email, setEmail] = useState("");
   const [senhaAtual, setSenhaAtual] = useState("");
@@ -561,7 +572,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         faixa: formAluno.faixa, 
         graus: parseInt(formAluno.graus), 
         turma_id: formAluno.turma_id,
-        academia_id: academiaAtual?.id
+        academia_id: academiaAtual?.id // <-- Vínculo Inteligente com a academia
       };
       if (formAluno.id) { await db.patch("alunos", formAluno.id, payload); if (detalhe?.id === formAluno.id) setDetalhe({ ...detalhe, ...payload }); }
       else await db.post("alunos", payload);
@@ -852,7 +863,9 @@ export default function App() {
   
   // ESTADOS DO MULTI-TENANCY 
   const [academias, setAcademias] = useState([]);
-  const [academiaAtual, setAcademiaAtual] = useState(() => store.get("osstrack_academia") || null);
+  
+  // LÊ A ACADEMIA SALVA APENAS SE FOR ADMIN
+  const [academiaAtual, setAcademiaAtual] = useState(() => store.get("osstrack_admin_academia") || null);
   
   // A CHAVE DO LOGIN GLOBAL
   const [todosAlunos, setTodosAlunos] = useState([]); 
@@ -868,10 +881,12 @@ export default function App() {
     else store.remove("osstrack_session");
   }, [session]);
 
-  // Salva academia no navegador
+  // Salva academia no navegador APENAS se quem estiver usando for o Admin
   useEffect(() => {
-    if (academiaAtual) store.set("osstrack_academia", academiaAtual);
-  }, [academiaAtual]);
+    if (academiaAtual && session?.role === "admin") {
+      store.set("osstrack_admin_academia", academiaAtual);
+    }
+  }, [academiaAtual, session]);
 
   // MOTOR DE BUSCA OTIMIZADO
   const carregarBanco = async (idForcado = null) => {
@@ -888,7 +903,6 @@ export default function App() {
       const todosOsAlunosData = await db.get("alunos", "?select=*,presencas(*)&order=nome");
       let listaGlobal = [];
       if (Array.isArray(todosOsAlunosData)) {
-         // ADICIONADO: APLICANDO AS INICIAIS DIRETAMENTE NA LISTA GLOBAL
          listaGlobal = todosOsAlunosData.map(a => ({
              ...a,
              foto: getIniciais(a.nome),
@@ -897,26 +911,27 @@ export default function App() {
          setTodosAlunos(listaGlobal); 
       }
 
-      // ─── A MÁGICA DA CORREÇÃO AQUI ──────────────────────────────
       let idAtivo = idForcado;
 
+      // ─── A CORREÇÃO DE FERRO AQUI ──────────────────────────────
       if (!idAtivo) {
         if (session?.role === "aluno") {
           // Se for aluno, o app É OBRIGADO a olhar para a academia DELE
-          // e ignorar qual academia estava salva no navegador pelo Admin
           const meuPerfil = listaGlobal.find(a => a.id === session.alunoId);
           if (meuPerfil) idAtivo = meuPerfil.academia_id;
         } else {
-          // Se for Admin, olha pro localStorage ou pega a primeira
-          idAtivo = academiaAtual?.id || (academiasData && academiasData.length > 0 ? academiasData[0].id : null);
+          // Se for Admin ou se acabou de deslogar, força a leitura da memória do navegador!
+          // Isso ignora completamente a academia "suja" que o aluno deixou na memória temporária do React
+          const memoriaAdmin = store.get("osstrack_admin_academia");
+          idAtivo = memoriaAdmin?.id || (academiasData && academiasData.length > 0 ? academiasData[0].id : null);
         }
       }
+      // ───────────────────────────────────────────────────────────
 
       if (idAtivo && Array.isArray(academiasData)) {
         const novaAtual = academiasData.find(a => a.id === idAtivo);
         if (novaAtual) setAcademiaAtual(novaAtual);
       }
-      // ────────────────────────────────────────────────────────────
 
       // Se não tem academia nenhuma no banco, encerra a busca com a tela limpa
       if (!idAtivo) {
@@ -933,7 +948,7 @@ export default function App() {
 
       // 4. Filtra localmente os alunos apenas para a Academia Ativa (Painel Admin)
       const alunosDaAcademia = listaGlobal.filter(a => a.academia_id === idAtivo);
-      setAlunos(alunosDaAcademia); // As iniciais e presenças já foram calculadas acima!
+      setAlunos(alunosDaAcademia); 
       
       setDbStatus("ok");
     } catch (e) {
