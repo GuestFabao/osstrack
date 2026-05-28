@@ -488,31 +488,22 @@ function AdminView({ turmas, alunos, carregarBanco }) {
   const [modalTurmaOpen, setModalTurmaOpen] = useState(false);
   const [formTurma, setFormTurma] = useState({ id: null, nome: "", horario: "", dias: "" });
   const [salvando, setSalvando] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false); 
+  
 
-  // Faz o botão voltar fechar modal OU pedir confirmação para sair
+  // Faz o botão voltar fechar modal OU pedir confirmação customizada para sair
   useEffect(() => {
-    const handlePopState = (e) => {
-      // 1. Se tem detalhe aberto, fecha o detalhe e interrompe a saída
+    const handlePopState = () => {
       if (detalhe) {
         setDetalhe(null);
         window.history.pushState(null, '', window.location.href);
-      } 
-      // 2. Se não tem detalhe, pede confirmação
-      else {
-        const sair = window.confirm("Deseja realmente sair do aplicativo?");
-        if (sair) {
-          // Se confirmar, deixa o navegador seguir o fluxo (fecha o app)
-        } else {
-          // Se cancelar, "empurra" o estado de volta para a história para impedir a saída
-          window.history.pushState(null, '', window.location.href);
-        }
+      } else {
+        setShowExitModal(true); // Abre nosso modal bonito em vez do padrão do navegador
       }
     };
 
-    // Inicializa o estado para que o navegador "saiba" que tem algo para voltar
     window.history.pushState(null, '', window.location.href);
     window.addEventListener('popstate', handlePopState);
-    
     return () => window.removeEventListener('popstate', handlePopState);
   }, [detalhe]);
 
@@ -715,6 +706,22 @@ function AdminView({ turmas, alunos, carregarBanco }) {
             </div>
           </div>
         </>
+      )}
+      {/* MODAL DE SAÍDA CUSTOMIZADO */}
+      {showExitModal && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{ textAlign: "center" }}>
+            <div className="modal-title" style={{ fontSize: "1.4rem" }}>SAIR DO APP?</div>
+            <p style={{ color: "var(--muted)", marginBottom: "24px" }}>Deseja realmente encerrar a sessão do OSS.TRACK?</p>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button className="filter-btn" style={{ flex: 1, padding: "12px" }} onClick={() => {
+                setShowExitModal(false);
+                window.history.pushState(null, '', window.location.href);
+              }}>CANCELAR</button>
+              <button className="btn-primary" style={{ flex: 1, padding: "12px" }} onClick={() => window.history.back()}>SAIR</button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="page-header">
