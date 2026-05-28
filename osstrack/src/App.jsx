@@ -312,7 +312,7 @@ function Login({ onLogin, alunos }) {
       const alunoEncontrado = alunos.find(
         (a) => a.nome.toLowerCase() === email.toLowerCase()
       );
-      if (alunoEncontrado && pass === "123") {
+      if (alunoEncontrado && pass === "4131") {
         onLogin({ username: alunoEncontrado.nome, role: "aluno", alunoId: alunoEncontrado.id });
         return;
       }
