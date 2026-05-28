@@ -1,12 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area } from "recharts";
-import imageCompression from "browser-image-compression";
+import { useState, useEffect } from "react";
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 const SB_URL = "https://yultwpihlrrgzelkyidv.supabase.co";
 const SB_KEY = "sb_publishable_IYTw-lZ4vYqIW1n-VBe7iA_b833hsHo";
 
-// ─── DB & STORAGE (REST API) ──────────────────────────────────────────────────
+// ─── DB (REST API) ────────────────────────────────────────────────────────────
 const db = {
   headers: {
     apikey: SB_KEY,
@@ -42,29 +40,7 @@ const db = {
   },
 };
 
-const storage = {
-  async upload(bucket, path, file) {
-    const res = await fetch(`${SB_URL}/storage/v1/object/${bucket}/${path}`, {
-      method: "POST",
-      headers: {
-        apikey: SB_KEY,
-        Authorization: `Bearer ${SB_KEY}`,
-        "Content-Type": file.type,
-      },
-      body: file,
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || "Erro ao enviar imagem");
-    }
-    return res.json();
-  },
-  getUrl(bucket, path) {
-    return `${SB_URL}/storage/v1/object/public/${bucket}/${path}`;
-  }
-};
-
-// ─── SUPABASE AUTH ────────────────────────────────────────────────────────────
+// ─── SUPABASE AUTH (inline, substitui o supabaseClient.js) ───────────────────
 const auth = {
   async signUp(email, password) {
     const res = await fetch(`${SB_URL}/auth/v1/signup`, {
@@ -88,7 +64,7 @@ const auth = {
   },
 };
 
-// ─── localStorage ─────────────────────────────────────────────────────────────
+// ─── localStorage (com fallback seguro para ambientes sem suporte) ────────────
 const store = {
   get(key) {
     try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
@@ -183,10 +159,10 @@ const css = `
 
   /* MODAL */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 299; display: flex; align-items: center; justify-content: center; padding: 20px; }
-  .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 420px; padding: 28px; position: relative; animation: slideUp 0.2s ease; max-height: 90vh; overflow-y: auto; }
+  .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 420px; padding: 28px; position: relative; animation: slideUp 0.2s ease; }
   @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 2px; margin-bottom: 20px; text-align: center; }
-  .btn-close { position: absolute; top: 20px; right: 20px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; z-index: 10; }
+  .modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 2px; margin-bottom: 20px; }
+  .btn-close { position: absolute; top: 20px; right: 20px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; }
 
   /* TOPNAV */
   .topnav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 56px; position: sticky; top: 0; z-index: 100; }
@@ -219,7 +195,7 @@ const css = `
   .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 500; }
   .badge-presente { background: #14532d; color: #4ade80; }
   .badge-faixa { display: inline-block; width: 32px; height: 8px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.1); }
-  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; flex-shrink: 0; background: var(--red-dim); overflow: hidden; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; flex-shrink: 0; background: var(--red-dim); }
 
   /* STAT CARDS */
   .stat-card { display: flex; flex-direction: column; gap: 6px; }
@@ -227,10 +203,6 @@ const css = `
   .stat-value { font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; line-height: 1; }
   .stat-value.red { color: var(--red); } .stat-value.green { color: var(--green); } .stat-value.gold { color: var(--gold); }
   .stat-sub { font-size: 0.78rem; color: var(--muted); }
-
-  /* RECHARTS TWEAKS */
-  .recharts-cartesian-axis-tick-value { fill: var(--muted); font-size: 0.75rem; }
-  .recharts-tooltip-cursor { fill: rgba(255,255,255,0.03) !important; }
 
   /* PROGRESS BAR */
   .prog-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
@@ -243,20 +215,12 @@ const css = `
   .hoje-item:hover { background: var(--surface2); }
   .hoje-item:last-child { border-bottom: none; }
 
-  /* ALUNO VIEW & GAMIFICAÇÃO */
+  /* ALUNO VIEW */
   .aluno-hero { background: linear-gradient(135deg, #1a0000 0%, var(--surface) 60%); border: 1px solid var(--border); border-radius: 16px; padding: 28px; margin-bottom: 24px; display: flex; align-items: center; gap: 24px; position: relative; overflow: hidden; }
   .aluno-hero::after { content: 'BJJ'; position: absolute; right: -10px; top: 50%; transform: translateY(-50%); font-family: 'Bebas Neue', sans-serif; font-size: 7rem; color: rgba(255,255,255,0.03); letter-spacing: 4px; pointer-events: none; }
-  .aluno-avatar { width: 72px; height: 72px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 1px; flex-shrink: 0; overflow: hidden; }
+  .aluno-avatar { width: 72px; height: 72px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 1px; flex-shrink: 0; }
   .aluno-nome { font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; letter-spacing: 2px; }
   .aluno-meta { font-size: 0.83rem; color: var(--muted); margin-top: 2px; }
-
-  .gamification-card { background: linear-gradient(145deg, #1e1e1e 0%, var(--surface) 100%); border: 1px solid var(--border); }
-  .rank-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
-  .rank-item:last-child { border-bottom: none; }
-  .rank-pos { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; color: var(--muted); width: 24px; text-align: center; }
-  .rank-pos.gold { color: #fbbf24; }
-  .rank-pos.silver { color: #94a3b8; }
-  .rank-pos.bronze { color: #b45309; }
 
   /* CHECKIN */
   .checkin-zone { text-align: center; padding: 32px 0; }
@@ -291,7 +255,7 @@ function DbStatusBar({ status, turmasCount, erro }) {
   return <div className="db-bar ok"><div className="db-dot" />Supabase conectado · {turmasCount} turmas carregadas</div>;
 }
 
-// ─── SETTINGS ──────────────────────────────────────────────────────────────────
+// ─── SETTINGS (inline, substitui ./components/Settings) ──────────────────────
 function Settings() {
   const [email, setEmail] = useState("");
   const [senhaAtual, setSenhaAtual] = useState("");
@@ -387,8 +351,8 @@ function Login({ onLogin, alunos }) {
   );
 }
 
-// ─── ALUNO VIEW (GAMIFICAÇÃO + CALENDÁRIO COMPACTO) ────────────────────────────
-function AlunoView({ aluno, turmas, alunos, carregarBanco }) {
+// ─── ALUNO VIEW ────────────────────────────────────────────────────────────────
+function AlunoView({ aluno, turmas, carregarBanco }) {
   const [salvando, setSalvando] = useState(false);
   const presencas = aluno?.presencas || [];
   const checkedIn = presencas.some((p) => p.data === TODAY);
@@ -396,21 +360,6 @@ function AlunoView({ aluno, turmas, alunos, carregarBanco }) {
   const turmaAluno = turmas.find((t) => t.id === aluno?.turma_id);
 
   if (!aluno) return <div className="main"><p style={{ color: "var(--muted)" }}>Carregando perfil…</p></div>;
-
-  const currentMonth = new Date().toISOString().slice(0, 7); 
-  
-  const ranking = [...alunos].map(a => ({
-    ...a,
-    presencasMes: a.presencas?.filter(p => p.data.startsWith(currentMonth)).length || 0
-  })).sort((a, b) => b.presencasMes - a.presencasMes);
-
-  const top3 = ranking.slice(0, 3);
-  const myRankIndex = ranking.findIndex(a => a.id === aluno.id);
-  const myRankPos = myRankIndex >= 0 ? myRankIndex + 1 : "-";
-  const minhaFrequenciaMes = ranking[myRankIndex]?.presencasMes || 0;
-  
-  const META_MES = 12; 
-  const progressoMeta = Math.min(Math.round((minhaFrequenciaMes / META_MES) * 100), 100);
 
   let btnText = "CHECK-IN", btnSub = "Toque para marcar", isDisabled = false;
   if (checkedIn) {
@@ -482,8 +431,8 @@ function AlunoView({ aluno, turmas, alunos, carregarBanco }) {
           </div>
         </div>
         <div style={{ marginLeft: "auto", textAlign: "center" }}>
-          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "2.2rem", color: "var(--gold)" }}>#{myRankPos}</div>
-          <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>no ranking</div>
+          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "2.2rem", color: freq.pct >= 75 ? "var(--green)" : "var(--red)" }}>{freq.pct}%</div>
+          <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>frequência</div>
         </div>
       </div>
 
@@ -500,74 +449,46 @@ function AlunoView({ aluno, turmas, alunos, carregarBanco }) {
           </div>
         </div>
 
-        <div className="card gamification-card">
-          <div className="section-title" style={{ color: "var(--gold)" }}>🏆 Ranking do Mês</div>
-          {top3.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhum check-in este mês.</p> : (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {top3.map((a, i) => (
-                <div key={a.id} className="rank-item">
-                  <div className={`rank-pos ${i === 0 ? 'gold' : i === 1 ? 'silver' : 'bronze'}`}>{i + 1}</div>
-                  <div className="avatar" style={{ width: 30, height: 30, fontSize: "0.65rem" }}>{a.foto}</div>
-                  <div style={{ flex: 1, fontSize: "0.88rem", fontWeight: a.id === aluno.id ? 700 : 400, color: a.id === aluno.id ? "var(--gold)" : "var(--text)" }}>
-                    {a.nome} {a.id === aluno.id && "(Você)"}
-                  </div>
-                  <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>{a.presencasMes} <span style={{ color: "var(--muted)", fontSize: "0.7rem", fontWeight: 400 }}>treinos</span></div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ marginTop: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px", fontSize: "0.85rem" }}>
-              <span>🎖️ Desafio: <strong>{minhaFrequenciaMes} / {META_MES}</strong> treinos</span>
-              <span style={{ color: progressoMeta >= 100 ? "var(--green)" : "var(--gold)", fontWeight: 600 }}>{progressoMeta}%</span>
-            </div>
-            <div className="prog-bar"><div className="prog-fill" style={{ width: `${progressoMeta}%`, background: progressoMeta >= 100 ? "var(--green)" : "var(--gold)" }} /></div>
-            {progressoMeta >= 100 && <p style={{ fontSize: "0.75rem", color: "var(--green)", marginTop: "8px", textAlign: "center" }}>Você bateu a meta do mês! Oss! 🥋</p>}
+        <div className="card">
+          <div className="section-title">Mês de {date.toLocaleDateString("pt-BR", { month: "long" })}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px", marginBottom: "6px" }}>
+            {["D","S","T","Q","Q","S","S"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: "0.6rem", color: "var(--muted)", padding: "4px 0" }}>{d}</div>)}
+          </div>
+          <div className="hist-grid">
+            {days.map((d) => <div key={d.key} className={`hist-day ${d.presente ? "presente" : d.temAula ? "falta" : ""}`} title={d.key}>{d.label}</div>)}
+          </div>
+          <div className="hist-legend" style={{ marginTop: "12px" }}>
+            <span><div className="dot" style={{ background: "#14532d" }} />Presente</span>
+            <span><div className="dot" style={{ background: "#1e1e1e" }} />Falta</span>
+          </div>
+          <div style={{ marginTop: "16px", display: "flex", gap: "24px" }}>
+            <div><div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.8rem", color: "var(--green)" }}>{freq.presentes}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>presenças</div></div>
+            <div><div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.8rem", color: "var(--red)" }}>{freq.total - freq.presentes}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>faltas</div></div>
+            <div><div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.8rem", color: "var(--gold)" }}>{freq.total}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>total</div></div>
           </div>
         </div>
       </div>
 
-      <div className="grid-2" style={{ marginTop: "20px" }}>
-        <div className="card">
-          <div className="section-title">Calendário ({date.toLocaleDateString("pt-BR", { month: "long" })})</div>
-          
-          <div style={{ maxWidth: "340px", margin: "0 auto", marginTop: "16px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px", marginBottom: "6px" }}>
-              {["D","S","T","Q","Q","S","S"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: "0.6rem", color: "var(--muted)", padding: "4px 0" }}>{d}</div>)}
-            </div>
-            <div className="hist-grid">
-              {days.map((d) => <div key={d.key} className={`hist-day ${d.presente ? "presente" : d.temAula ? "falta" : ""}`} title={d.key}>{d.label}</div>)}
-            </div>
-            <div className="hist-legend" style={{ marginTop: "16px", justifyContent: "center" }}>
-              <span><div className="dot" style={{ background: "#14532d" }} />Presente</span>
-              <span><div className="dot" style={{ background: "#1e1e1e" }} />Falta</span>
-            </div>
+      <div className="card" style={{ marginTop: "20px" }}>
+        <div className="section-title">Histórico Recente</div>
+        {presencas.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhuma presença registrada ainda.</p> : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Data</th><th>Turma</th><th>Hora</th><th>Status</th></tr></thead>
+              <tbody>
+                {[...presencas].reverse().slice(0, 8).map((p) => (
+                  <tr key={p.id}>
+                    <td>{new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")}</td>
+                    <td>{turmas.find((t) => t.id === p.turma_id)?.nome || "—"}</td>
+                    <td>{p.hora?.substring(0, 5)}</td>
+                    <td><span className="badge badge-presente">Presente</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-
-        <div className="card">
-          <div className="section-title">Histórico Recente</div>
-          {presencas.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhuma presença registrada ainda.</p> : (
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th>Data</th><th>Turma</th><th>Hora</th><th>Status</th></tr></thead>
-                <tbody>
-                  {[...presencas].reverse().slice(0, 6).map((p) => (
-                    <tr key={p.id}>
-                      <td>{new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")}</td>
-                      <td>{turmas.find((t) => t.id === p.turma_id)?.nome || "—"}</td>
-                      <td>{p.hora?.substring(0, 5)}</td>
-                      <td><span className="badge badge-presente">Presente</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        )}
       </div>
-
     </div>
   );
 }
@@ -578,12 +499,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
   const [filtroTurma, setFiltroTurma] = useState("Todas");
   const [detalhe, setDetalhe] = useState(null);
   const [modalAlunoOpen, setModalAlunoOpen] = useState(false);
-  const [formAluno, setFormAluno] = useState({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: "", foto_url: "" });
-  
-  // ESTADOS DA CÂMERA/UPLOAD
-  const [arquivoFoto, setArquivoFoto] = useState(null);
-  const [previewFoto, setPreviewFoto] = useState("");
-
+  const [formAluno, setFormAluno] = useState({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: "" });
   const [modalTurmaOpen, setModalTurmaOpen] = useState(false);
   const [formTurma, setFormTurma] = useState({ id: null, nome: "", horario: "", dias: "" });
   const [salvando, setSalvando] = useState(false);
@@ -620,40 +536,12 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
   const freqMedia = alunos.length ? Math.round(alunos.reduce((s, a) => s + calcFreq(a).pct, 0) / alunos.length) : 0;
   const alunosFiltrados = filtroTurma === "Todas" ? alunos : alunos.filter((a) => turmas.find((t) => t.id === a.turma_id)?.nome === filtroTurma);
 
-  const chartDataPresencas = useMemo(() => {
-    const days = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split("T")[0];
-      const label = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-      const count = alunos.reduce((acc, a) => acc + (a.presencas?.some(p => p.data === dateStr) ? 1 : 0), 0);
-      days.push({ name: label, Presenças: count });
-    }
-    return days;
-  }, [alunos]);
-
-  const chartDataTurmas = useMemo(() => {
-    return turmas.map(t => ({
-      name: t.nome,
-      Alunos: alunos.filter(a => a.turma_id === t.id).length
-    }));
-  }, [turmas, alunos]);
-
   const abrirModalAlunoNovo = () => {
     if (turmas.length === 0) return alert("Cadastre uma turma nesta unidade primeiro!");
-    setFormAluno({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: turmas[0]?.id || "", foto_url: "" }); 
-    setArquivoFoto(null);
-    setPreviewFoto("");
+    setFormAluno({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: turmas[0]?.id || "" }); 
     setModalAlunoOpen(true); 
   };
-  
-  const abrirModalAlunoEditar = (a) => { 
-    setFormAluno({ id: a.id, nome: a.nome, faixa: a.faixa, graus: String(a.graus || 0), turma_id: a.turma_id, foto_url: a.foto_url || "" }); 
-    setArquivoFoto(null);
-    setPreviewFoto(a.foto_url || "");
-    setModalAlunoOpen(true); 
-  };
+  const abrirModalAlunoEditar = (a) => { setFormAluno({ id: a.id, nome: a.nome, faixa: a.faixa, graus: String(a.graus || 0), turma_id: a.turma_id }); setModalAlunoOpen(true); };
 
   const excluirAluno = async (id) => {
     if (!window.confirm("Excluir aluno? Todas as presenças serão apagadas.")) return;
@@ -665,43 +553,18 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
     e.preventDefault();
     if (!formAluno.nome || !formAluno.turma_id) return alert("Preencha nome e turma!");
     setSalvando(true);
-    
-    let finalFotoUrl = formAluno.foto_url;
-
-    // LÓGICA DE UPLOAD E COMPRESSÃO DE IMAGEM 📸
-    if (arquivoFoto) {
-      try {
-        const options = { maxSizeMB: 0.1, maxWidthOrHeight: 500, useWebWorker: true };
-        const compressed = await imageCompression(arquivoFoto, options);
-        const cleanName = compressed.name.replace(/[^a-zA-Z0-9.]/g, '');
-        const fileName = `${Date.now()}_${cleanName}`;
-        
-        await storage.upload("avatars", fileName, compressed);
-        finalFotoUrl = storage.getUrl("avatars", fileName);
-      } catch (err) {
-        alert("Erro ao enviar a foto: " + err.message);
-        setSalvando(false);
-        return;
-      }
-    }
-
     try {
       const payload = { 
         nome: formAluno.nome, 
         faixa: formAluno.faixa, 
         graus: parseInt(formAluno.graus), 
         turma_id: formAluno.turma_id,
-        academia_id: academiaAtual?.id,
-        foto_url: finalFotoUrl
+        academia_id: academiaAtual?.id // <-- Vínculo Inteligente com a academia
       };
-      if (formAluno.id) { 
-        await db.patch("alunos", formAluno.id, payload); 
-        if (detalhe?.id === formAluno.id) setDetalhe({ ...detalhe, ...payload }); 
-      } else {
-        await db.post("alunos", payload);
-      }
+      if (formAluno.id) { await db.patch("alunos", formAluno.id, payload); if (detalhe?.id === formAluno.id) setDetalhe({ ...detalhe, ...payload }); }
+      else await db.post("alunos", payload);
       await carregarBanco(); setModalAlunoOpen(false);
-    } catch (err) { alert("Erro ao salvar: " + err.message); } finally { setSalvando(false); }
+    } catch (err) { alert("Erro: " + err.message); } finally { setSalvando(false); }
   };
 
   const abrirModalTurmaNova = () => { setFormTurma({ id: null, nome: "", horario: "", dias: "" }); setModalTurmaOpen(true); };
@@ -724,6 +587,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
 
   return (
     <div className="main">
+      {/* MODAL SAIR */}
       {showExitModal && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ textAlign: "center" }}>
@@ -737,46 +601,26 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </div>
       )}
 
-      {/* MODAL ALUNO COM FOTO DE PERFIL 📸 */}
+      {/* MODAL ALUNO */}
       {modalAlunoOpen && (
         <div className="modal-overlay">
           <div className="modal-box">
             <button className="btn-close" onClick={() => setModalAlunoOpen(false)}>✕</button>
             <div className="modal-title">{formAluno.id ? "EDITAR ALUNO" : "NOVO ALUNO"}</div>
-            
             <form onSubmit={salvarAluno}>
-              
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
-                <label style={{ cursor: 'pointer', position: 'relative' }} title="Clique para escolher uma foto">
-                  <div style={{ width: 90, height: 90, borderRadius: '50%', background: 'var(--surface2)', border: '2px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {previewFoto ? (
-                      <img src={previewFoto} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Preview" />
-                    ) : (
-                      <span style={{ fontSize: '2rem', color: 'var(--muted)' }}>📷</span>
-                    )}
-                  </div>
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                      setArquivoFoto(file);
-                      setPreviewFoto(URL.createObjectURL(file));
-                    }
-                  }} />
-                </label>
-              </div>
-
-              <div className="input-group"><label>Nome Completo</label><input value={formAluno.nome} onChange={(e) => setFormAluno({ ...formAluno, nome: e.target.value })} placeholder="Ex: João da Silva" /></div>
+              <div className="input-group"><label>Nome Completo</label><input autoFocus value={formAluno.nome} onChange={(e) => setFormAluno({ ...formAluno, nome: e.target.value })} placeholder="Ex: João da Silva" /></div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div className="input-group"><label>Faixa</label><select value={formAluno.faixa} onChange={(e) => setFormAluno({ ...formAluno, faixa: e.target.value })}>{Object.keys(FAIXA_COLORS).map((f) => <option key={f}>{f}</option>)}</select></div>
                 <div className="input-group"><label>Graus</label><select value={formAluno.graus} onChange={(e) => setFormAluno({ ...formAluno, graus: e.target.value })}>{[0,1,2,3,4].map((g) => <option key={g} value={g}>{g} {g === 1 ? "Grau" : "Graus"}</option>)}</select></div>
               </div>
               <div className="input-group"><label>Turma</label><select value={formAluno.turma_id} onChange={(e) => setFormAluno({ ...formAluno, turma_id: e.target.value })}>{turmas.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}</select></div>
-              <button type="submit" className="btn-primary" style={{ marginTop: "16px" }} disabled={salvando}>{salvando ? "SALVANDO FOTO..." : formAluno.id ? "SALVAR DADOS" : "CADASTRAR"}</button>
+              <button type="submit" className="btn-primary" style={{ marginTop: "16px" }} disabled={salvando}>{salvando ? "SALVANDO..." : formAluno.id ? "SALVAR" : "CADASTRAR"}</button>
             </form>
           </div>
         </div>
       )}
 
+      {/* MODAL TURMA */}
       {modalTurmaOpen && (
         <div className="modal-overlay">
           <div className="modal-box">
@@ -792,6 +636,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </div>
       )}
 
+      {/* DETAIL PANEL */}
       {detalhe && (
         <>
           <div className="modal-overlay" onClick={() => setDetalhe(null)} style={{ background: "rgba(0,0,0,0.5)", zIndex: 199 }} />
@@ -819,14 +664,14 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
               )) : <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Nenhuma presença ainda.</p>}
             </div>
             <div style={{ marginTop: "auto", display: "flex", gap: "12px", flexDirection: "column" }}>
-              <button className="btn-primary" style={{ padding: "10px", fontSize: "1rem" }} onClick={() => abrirModalAlunoEditar(detalhe)}>✏️ EDITAR DADOS / FOTO</button>
+              <button className="btn-primary" style={{ padding: "10px", fontSize: "1rem" }} onClick={() => abrirModalAlunoEditar(detalhe)}>✏️ EDITAR DADOS</button>
               <button className="btn-danger" style={{ padding: "10px", fontSize: "1rem" }} onClick={() => excluirAluno(detalhe.id)}>🗑️ EXCLUIR ALUNO</button>
             </div>
           </div>
         </>
       )}
 
-      {/* TABS HEADER */}
+      {/* PAGE HEADER + TABS */}
       <div className="page-header">
         <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
           {["dashboard", "hoje", "turmas", "alunos", "config"].map((t) => (
@@ -839,56 +684,18 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         {tab === "hoje" && <p>{new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>}
       </div>
 
+      {/* DASHBOARD */}
       {tab === "dashboard" && (
         <>
           <div className="grid-4">
             <div className="card stat-card"><div className="stat-label">Total de Alunos</div><div className="stat-value">{alunos.length}</div><div className="stat-sub">Matriculados</div></div>
             <div className="card stat-card"><div className="stat-label">Presentes Hoje</div><div className="stat-value green">{presencasHoje.length}</div><div className="stat-sub">Registrados</div></div>
             <div className="card stat-card"><div className="stat-label">Faltas Hoje</div><div className="stat-value red">{faltasHoje}</div><div className="stat-sub">Ausentes</div></div>
-            <div className="card stat-card"><div className="stat-label">Freq. Média</div><div className="stat-value gold">{freqMedia}%</div><div className="stat-sub">Geral da Unidade</div></div>
+            <div className="card stat-card"><div className="stat-label">Freq. Média</div><div className="stat-value gold">{freqMedia}%</div><div className="stat-sub">Geral da Academia</div></div>
           </div>
-          
-          <div className="grid-2" style={{ marginBottom: "20px" }}>
-            <div className="card" style={{ paddingBottom: "10px" }}>
-              <div className="section-title">Evolução de Presenças (7 Dias)</div>
-              <div style={{ width: "100%", height: "240px", marginTop: "20px" }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartDataPresencas} margin={{ top: 0, right: 0, left: -25, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorPv" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--red)" stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor="var(--red)" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                    <XAxis dataKey="name" stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '0.85rem' }} itemStyle={{ color: 'var(--red)', fontWeight: 600 }} />
-                    <Area type="monotone" dataKey="Presenças" stroke="var(--red)" strokeWidth={3} fillOpacity={1} fill="url(#colorPv)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="card" style={{ paddingBottom: "10px" }}>
-              <div className="section-title">Alunos por Turma</div>
-              <div style={{ width: "100%", height: "240px", marginTop: "20px" }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartDataTurmas} margin={{ top: 0, right: 0, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                    <XAxis dataKey="name" stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-                    <Tooltip cursor={{fill: 'rgba(255,255,255,0.03)'}} contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '0.85rem' }} itemStyle={{ color: 'var(--gold)', fontWeight: 600 }} />
-                    <Bar dataKey="Alunos" fill="var(--gold)" radius={[4, 4, 0, 0]} barSize={30} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-
           <div className="grid-2">
             <div className="card">
-              <div className="section-title">Frequência da Unidade</div>
+              <div className="section-title">Frequência da Academia</div>
               {alunos.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhum aluno cadastrado ainda.</p>
                 : alunos.map((a) => { const f = calcFreq(a); return (
                   <div key={a.id} style={{ marginBottom: "14px", cursor: "pointer" }} onClick={() => setDetalhe(a)}>
@@ -916,6 +723,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </>
       )}
 
+      {/* HOJE */}
       {tab === "hoje" && (
         <div className="grid-2">
           <div className="card">
@@ -946,6 +754,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </div>
       )}
 
+      {/* TURMAS */}
       {tab === "turmas" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {turmas.length === 0 && <p style={{ color: "var(--muted)" }}>Nenhuma turma nesta unidade.</p>}
@@ -971,6 +780,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </div>
       )}
 
+      {/* ALUNOS */}
       {tab === "alunos" && (
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
@@ -1003,6 +813,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </div>
       )}
 
+      {/* CONFIG */}
       {tab === "config" && (
         <>
           <div className="card" style={{ marginBottom: "20px" }}>
@@ -1036,27 +847,35 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
 // ─── ROOT ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [session, setSession] = useState(() => store.get("osstrack_session"));
+  
+  // ESTADOS DO MULTI-TENANCY 
   const [academias, setAcademias] = useState([]);
   const [academiaAtual, setAcademiaAtual] = useState(() => store.get("osstrack_academia") || null);
+  
   const [turmas, setTurmas] = useState([]);
   const [alunos, setAlunos] = useState([]);
   const [dbStatus, setDbStatus] = useState("loading");
   const [dbErro, setDbErro] = useState("");
 
+  // Salva sessão no navegador
   useEffect(() => {
     if (session) store.set("osstrack_session", session);
     else store.remove("osstrack_session");
   }, [session]);
 
+  // Salva academia no navegador
   useEffect(() => {
     if (academiaAtual) store.set("osstrack_academia", academiaAtual);
   }, [academiaAtual]);
 
+  // MOTOR DE BUSCA OTIMIZADO (Filtra direto no Banco de Dados)
   const carregarBanco = async (idForcado = null) => {
     try {
       setDbStatus("loading");
+      
       let idAtivo = idForcado || academiaAtual?.id;
       
+      // 1. Carrega as academias se precisar
       const academiasData = await db.get("academias", "?order=nome");
       if (Array.isArray(academiasData)) {
         setAcademias(academiasData);
@@ -1066,6 +885,7 @@ export default function App() {
         }
       }
 
+      // Se não tem academia nenhuma no banco, encerra a busca com a tela limpa
       if (!idAtivo) {
          setTurmas([]);
          setAlunos([]);
@@ -1073,21 +893,15 @@ export default function App() {
          return;
       }
 
+      // 2. Busca Turmas filtrando por Academia
       const turmasData = await db.get("turmas", `?academia_id=eq.${idAtivo}&order=created_at`);
       if (!Array.isArray(turmasData)) throw new Error(turmasData?.message || "Erro nas turmas");
       setTurmas(turmasData);
 
+      // 3. Busca Alunos filtrando por Academia
       const alunosData = await db.get("alunos", `?academia_id=eq.${idAtivo}&select=*,presencas(*)&order=nome`);
       if (!Array.isArray(alunosData)) throw new Error(alunosData?.message || "Erro nos alunos");
-      
-      // TRANSFORMA O CAMPO 'FOTO' PARA LER O URL DO BANCO DE DADOS
-      setAlunos(alunosData.map((a) => {
-        const conteudoFoto = a.foto_url 
-          ? <img src={a.foto_url} alt={a.nome} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
-          : getIniciais(a.nome);
-
-        return { ...a, foto: conteudoFoto, foto_url: a.foto_url, presencas: a.presencas || [] };
-      }));
+      setAlunos(alunosData.map((a) => ({ ...a, foto: getIniciais(a.nome), presencas: a.presencas || [] })));
       
       setDbStatus("ok");
     } catch (e) {
@@ -1096,6 +910,7 @@ export default function App() {
     }
   };
 
+  // Roda assim que o app liga
   useEffect(() => { carregarBanco(); }, []);
 
   const alunoLogado = session?.role === "aluno" ? alunos.find((a) => a.id === session.alunoId) : null;
@@ -1112,6 +927,8 @@ export default function App() {
             <nav className="topnav">
               <div className="nav-logo">OSS<span>.</span>TRACK</div>
               <div className="nav-right">
+                
+                {/* MENU DE ACADEMIAS */}
                 {session.role === "admin" && academias.length > 0 && (
                   <select 
                     className="academy-select"
@@ -1119,7 +936,7 @@ export default function App() {
                     onChange={(e) => {
                       const nova = academias.find(a => a.id === e.target.value);
                       setAcademiaAtual(nova);
-                      carregarBanco(nova.id); 
+                      carregarBanco(nova.id); // Força a buscar os dados da nova unidade na hora
                     }}
                   >
                     {academias.map(a => (
@@ -1127,13 +944,14 @@ export default function App() {
                     ))}
                   </select>
                 )}
+
                 <span className="nav-user">{session.username} · {session.role === "admin" ? "Admin" : "Aluno"}</span>
                 <button className="btn-logout" onClick={() => setSession(null)}>Sair</button>
               </div>
             </nav>
             {session.role === "admin"
               ? <AdminView turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} academiaAtual={academiaAtual} />
-              : <AlunoView aluno={alunoLogado} turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} />
+              : <AlunoView aluno={alunoLogado} turmas={turmas} carregarBanco={carregarBanco} />
             }
           </>
         )}
