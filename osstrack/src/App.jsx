@@ -300,7 +300,7 @@ function Settings() {
 }
 
 // ─── LOGIN ─────────────────────────────────────────────────────────────────────
-function Login({ onLogin, alunos }) {
+function Login({ onLogin, todosAlunos }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
@@ -311,9 +311,10 @@ function Login({ onLogin, alunos }) {
     setErro("");
     setCarregando(true);
     try {
-      const alunoEncontrado = alunos.find(
+      const alunoEncontrado = todosAlunos.find(
         (a) => a.nome.toLowerCase() === email.toLowerCase()
       );
+      
       if (alunoEncontrado && pass === "4131") {
         onLogin({ username: alunoEncontrado.nome, role: "aluno", alunoId: alunoEncontrado.id });
         return;
@@ -354,12 +355,13 @@ function Login({ onLogin, alunos }) {
 // ─── ALUNO VIEW ────────────────────────────────────────────────────────────────
 function AlunoView({ aluno, turmas, carregarBanco }) {
   const [salvando, setSalvando] = useState(false);
+  
+  if (!aluno) return <div className="main"><p style={{ color: "var(--muted)" }}>Carregando perfil…</p></div>;
+
   const presencas = aluno?.presencas || [];
   const checkedIn = presencas.some((p) => p.data === TODAY);
   const freq = calcFreq({ ...aluno, presencas });
   const turmaAluno = turmas.find((t) => t.id === aluno?.turma_id);
-
-  if (!aluno) return <div className="main"><p style={{ color: "var(--muted)" }}>Carregando perfil…</p></div>;
 
   let btnText = "CHECK-IN", btnSub = "Toque para marcar", isDisabled = false;
   if (checkedIn) {
@@ -559,7 +561,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         faixa: formAluno.faixa, 
         graus: parseInt(formAluno.graus), 
         turma_id: formAluno.turma_id,
-        academia_id: academiaAtual?.id // <-- Vínculo Inteligente com a academia
+        academia_id: academiaAtual?.id
       };
       if (formAluno.id) { await db.patch("alunos", formAluno.id, payload); if (detalhe?.id === formAluno.id) setDetalhe({ ...detalhe, ...payload }); }
       else await db.post("alunos", payload);
@@ -852,6 +854,9 @@ export default function App() {
   const [academias, setAcademias] = useState([]);
   const [academiaAtual, setAcademiaAtual] = useState(() => store.get("osstrack_academia") || null);
   
+  // A CHAVE DO LOGIN GLOBAL
+  const [todosAlunos, setTodosAlunos] = useState([]); 
+  
   const [turmas, setTurmas] = useState([]);
   const [alunos, setAlunos] = useState([]);
   const [dbStatus, setDbStatus] = useState("loading");
@@ -868,22 +873,50 @@ export default function App() {
     if (academiaAtual) store.set("osstrack_academia", academiaAtual);
   }, [academiaAtual]);
 
-  // MOTOR DE BUSCA OTIMIZADO (Filtra direto no Banco de Dados)
+  // MOTOR DE BUSCA OTIMIZADO
   const carregarBanco = async (idForcado = null) => {
     try {
       setDbStatus("loading");
       
-      let idAtivo = idForcado || academiaAtual?.id;
-      
-      // 1. Carrega as academias se precisar
+      // 1. Carrega as academias
       const academiasData = await db.get("academias", "?order=nome");
       if (Array.isArray(academiasData)) {
         setAcademias(academiasData);
-        if (!idAtivo && academiasData.length > 0) {
-          idAtivo = academiasData[0].id;
-          setAcademiaAtual(academiasData[0]);
+      }
+
+      // 2. Busca todos os alunos globalmente
+      const todosOsAlunosData = await db.get("alunos", "?select=*,presencas(*)&order=nome");
+      let listaGlobal = [];
+      if (Array.isArray(todosOsAlunosData)) {
+         // ADICIONADO: APLICANDO AS INICIAIS DIRETAMENTE NA LISTA GLOBAL
+         listaGlobal = todosOsAlunosData.map(a => ({
+             ...a,
+             foto: getIniciais(a.nome),
+             presencas: a.presencas || []
+         }));
+         setTodosAlunos(listaGlobal); 
+      }
+
+      // ─── A MÁGICA DA CORREÇÃO AQUI ──────────────────────────────
+      let idAtivo = idForcado;
+
+      if (!idAtivo) {
+        if (session?.role === "aluno") {
+          // Se for aluno, o app É OBRIGADO a olhar para a academia DELE
+          // e ignorar qual academia estava salva no navegador pelo Admin
+          const meuPerfil = listaGlobal.find(a => a.id === session.alunoId);
+          if (meuPerfil) idAtivo = meuPerfil.academia_id;
+        } else {
+          // Se for Admin, olha pro localStorage ou pega a primeira
+          idAtivo = academiaAtual?.id || (academiasData && academiasData.length > 0 ? academiasData[0].id : null);
         }
       }
+
+      if (idAtivo && Array.isArray(academiasData)) {
+        const novaAtual = academiasData.find(a => a.id === idAtivo);
+        if (novaAtual) setAcademiaAtual(novaAtual);
+      }
+      // ────────────────────────────────────────────────────────────
 
       // Se não tem academia nenhuma no banco, encerra a busca com a tela limpa
       if (!idAtivo) {
@@ -893,15 +926,14 @@ export default function App() {
          return;
       }
 
-      // 2. Busca Turmas filtrando por Academia
+      // 3. Busca Turmas filtrando por Academia
       const turmasData = await db.get("turmas", `?academia_id=eq.${idAtivo}&order=created_at`);
       if (!Array.isArray(turmasData)) throw new Error(turmasData?.message || "Erro nas turmas");
       setTurmas(turmasData);
 
-      // 3. Busca Alunos filtrando por Academia
-      const alunosData = await db.get("alunos", `?academia_id=eq.${idAtivo}&select=*,presencas(*)&order=nome`);
-      if (!Array.isArray(alunosData)) throw new Error(alunosData?.message || "Erro nos alunos");
-      setAlunos(alunosData.map((a) => ({ ...a, foto: getIniciais(a.nome), presencas: a.presencas || [] })));
+      // 4. Filtra localmente os alunos apenas para a Academia Ativa (Painel Admin)
+      const alunosDaAcademia = listaGlobal.filter(a => a.academia_id === idAtivo);
+      setAlunos(alunosDaAcademia); // As iniciais e presenças já foram calculadas acima!
       
       setDbStatus("ok");
     } catch (e) {
@@ -910,10 +942,12 @@ export default function App() {
     }
   };
 
-  // Roda assim que o app liga
-  useEffect(() => { carregarBanco(); }, []);
+  // Roda assim que o app liga E sempre que alguém fizer Login/Logout
+  useEffect(() => { 
+    carregarBanco(); 
+  }, [session?.role, session?.alunoId]);
 
-  const alunoLogado = session?.role === "aluno" ? alunos.find((a) => a.id === session.alunoId) : null;
+  const alunoLogado = session?.role === "aluno" ? todosAlunos.find((a) => a.id === session.alunoId) : null;
 
   return (
     <>
@@ -921,7 +955,7 @@ export default function App() {
       <div className="app">
         <DbStatusBar status={dbStatus} turmasCount={turmas.length} erro={dbErro} />
         {!session ? (
-          <Login onLogin={setSession} alunos={alunos} />
+          <Login onLogin={setSession} todosAlunos={todosAlunos} />
         ) : (
           <>
             <nav className="topnav">
