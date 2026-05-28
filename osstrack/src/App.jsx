@@ -489,6 +489,22 @@ function AdminView({ turmas, alunos, carregarBanco }) {
   const [formTurma, setFormTurma] = useState({ id: null, nome: "", horario: "", dias: "" });
   const [salvando, setSalvando] = useState(false);
 
+  // Faz o botão voltar do celular fechar o modal em vez de sair do app
+  useEffect(() => {
+    const handlePopState = () => {
+      if (detalhe) {
+        setDetalhe(null);
+      }
+    };
+
+    if (detalhe) {
+      window.history.pushState({ modal: 'detalhe' }, '');
+    }
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [detalhe]);
+
   // NOVA FUNÇÃO: Dar ou remover presença manualmente pelo painel admin
   const togglePresencaManual = async (aluno) => {
     const presencaHoje = aluno.presencas?.find(p => p.data === TODAY);
