@@ -922,13 +922,27 @@ function AdminView({ turmas, alunos, carregarBanco }) {
   );
 }
 
-// ─── ROOT ──────────────────────────────────────────────────────────────────────
+// ─── ROOT ATUALIZADO (PERSISTÊNCIA DE LOGIN) ──────────────────────────────────
 export default function App() {
-  const [session, setSession] = useState(null);
+  // Inicializa o estado lendo do localStorage para não deslogar no refresh
+  const [session, setSession] = useState(() => {
+    const saved = localStorage.getItem('osstrack_session');
+    return saved ? JSON.parse(saved) : null;
+  });
+
   const [turmas, setTurmas] = useState([]);
   const [alunos, setAlunos] = useState([]);
   const [dbStatus, setDbStatus] = useState("loading");
   const [dbErro, setDbErro] = useState("");
+
+  // Salva no localStorage sempre que o session mudar
+  useEffect(() => {
+    if (session) {
+      localStorage.setItem('osstrack_session', JSON.stringify(session));
+    } else {
+      localStorage.removeItem('osstrack_session');
+    }
+  }, [session]);
 
   const carregarBanco = async () => {
     try {
