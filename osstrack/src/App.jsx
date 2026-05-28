@@ -489,19 +489,30 @@ function AdminView({ turmas, alunos, carregarBanco }) {
   const [formTurma, setFormTurma] = useState({ id: null, nome: "", horario: "", dias: "" });
   const [salvando, setSalvando] = useState(false);
 
-  // Faz o botão voltar do celular fechar o modal em vez de sair do app
+  // Faz o botão voltar fechar modal OU pedir confirmação para sair
   useEffect(() => {
-    const handlePopState = () => {
+    const handlePopState = (e) => {
+      // 1. Se tem detalhe aberto, fecha o detalhe e interrompe a saída
       if (detalhe) {
         setDetalhe(null);
+        window.history.pushState(null, '', window.location.href);
+      } 
+      // 2. Se não tem detalhe, pede confirmação
+      else {
+        const sair = window.confirm("Deseja realmente sair do aplicativo?");
+        if (sair) {
+          // Se confirmar, deixa o navegador seguir o fluxo (fecha o app)
+        } else {
+          // Se cancelar, "empurra" o estado de volta para a história para impedir a saída
+          window.history.pushState(null, '', window.location.href);
+        }
       }
     };
 
-    if (detalhe) {
-      window.history.pushState({ modal: 'detalhe' }, '');
-    }
-
+    // Inicializa o estado para que o navegador "saiba" que tem algo para voltar
+    window.history.pushState(null, '', window.location.href);
     window.addEventListener('popstate', handlePopState);
+    
     return () => window.removeEventListener('popstate', handlePopState);
   }, [detalhe]);
 
