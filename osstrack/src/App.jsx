@@ -924,10 +924,16 @@ function AdminView({ turmas, alunos, carregarBanco }) {
 
 // ─── ROOT ATUALIZADO (PERSISTÊNCIA DE LOGIN) ──────────────────────────────────
 export default function App() {
-  // Inicializa o estado lendo do localStorage para não deslogar no refresh
+  // Inicializa o estado com proteção: se o dado estiver corrompido, limpa e recomeça
   const [session, setSession] = useState(() => {
-    const saved = localStorage.getItem('osstrack_session');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('osstrack_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.error("Erro na leitura da sessão, limpando local storage:", e);
+      localStorage.removeItem('osstrack_session'); 
+      return null;
+    }
   });
 
   const [turmas, setTurmas] = useState([]);
