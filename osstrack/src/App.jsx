@@ -156,7 +156,7 @@ const css = `
   .main { flex: 1; padding: 24px 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
   .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
   .section-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: 2px; margin-bottom: 16px; }
 
   /* LOGIN */
