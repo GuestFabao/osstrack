@@ -246,7 +246,7 @@ function Login({ onLogin, alunos }) {
       <div className="login-card">
         <div className="login-logo">OSS<span>.</span>TRACK</div>
         <div className="login-sub" style={{marginBottom:"32px"}}>
-          {isSignUp ? "Criar Conta Admin" : "Sistema de Presença — BJJ"}
+          {isSignUp ? "Criar Conta Admin" : "Sistema de Presença — TEAM CRUZ BJJ"}
         </div>
         
         <div className="input-group">
