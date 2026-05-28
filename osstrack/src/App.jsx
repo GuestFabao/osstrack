@@ -707,22 +707,6 @@ function AdminView({ turmas, alunos, carregarBanco }) {
           </div>
         </>
       )}
-      {/* MODAL DE SAÍDA CUSTOMIZADO */}
-      {showExitModal && (
-        <div className="modal-overlay">
-          <div className="modal-box" style={{ textAlign: "center" }}>
-            <div className="modal-title" style={{ fontSize: "1.4rem" }}>SAIR DO APP?</div>
-            <p style={{ color: "var(--muted)", marginBottom: "24px" }}>Deseja realmente encerrar a sessão do OSS.TRACK?</p>
-            <div style={{ display: "flex", gap: "12px" }}>
-              <button className="filter-btn" style={{ flex: 1, padding: "12px" }} onClick={() => {
-                setShowExitModal(false);
-                window.history.pushState(null, '', window.location.href);
-              }}>CANCELAR</button>
-              <button className="btn-primary" style={{ flex: 1, padding: "12px" }} onClick={() => window.history.back()}>SAIR</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="page-header">
         <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
@@ -922,33 +906,13 @@ function AdminView({ turmas, alunos, carregarBanco }) {
   );
 }
 
-// ─── ROOT ATUALIZADO (PERSISTÊNCIA DE LOGIN) ──────────────────────────────────
+// ─── ROOT ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  // Inicializa o estado com proteção: se o dado estiver corrompido, limpa e recomeça
-  const [session, setSession] = useState(() => {
-    try {
-      const saved = localStorage.getItem('osstrack_session');
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) {
-      console.error("Erro na leitura da sessão, limpando local storage:", e);
-      localStorage.removeItem('osstrack_session'); 
-      return null;
-    }
-  });
-
+  const [session, setSession] = useState(null);
   const [turmas, setTurmas] = useState([]);
   const [alunos, setAlunos] = useState([]);
   const [dbStatus, setDbStatus] = useState("loading");
   const [dbErro, setDbErro] = useState("");
-
-  // Salva no localStorage sempre que o session mudar
-  useEffect(() => {
-    if (session) {
-      localStorage.setItem('osstrack_session', JSON.stringify(session));
-    } else {
-      localStorage.removeItem('osstrack_session');
-    }
-  }, [session]);
 
   const carregarBanco = async () => {
     try {
@@ -994,15 +958,10 @@ export default function App() {
                 <button className="btn-logout" onClick={() => setSession(null)}>Sair</button>
               </div>
             </nav>
-            {session.role === "admin" ? (
-              <AdminView turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} />
-            ) : (
-              alunos.length > 0 ? (
-                <AlunoView aluno={alunos.find(a => a.id === session.alunoId)} turmas={turmas} carregarBanco={carregarBanco} />
-              ) : (
-                <div style={{ padding: "40px", textAlign: "center", color: "var(--muted)" }}>Carregando dados do aluno...</div>
-              )
-            )}
+            {session.role === "admin" 
+              ? <AdminView turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} />
+              : <AlunoView aluno={alunos.find(a => a.id === session.alunoId)} turmas={turmas} carregarBanco={carregarBanco} />
+            }
           </>
         )}
       </div>
