@@ -1,12 +1,10 @@
 import { useState, useEffect } from "react";
-import SignUp from './components/SignUp';
-import Settings from './components/Settings';
-import { supabase } from './supabaseClient';
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 const SB_URL = "https://yultwpihlrrgzelkyidv.supabase.co";
 const SB_KEY = "sb_publishable_IYTw-lZ4vYqIW1n-VBe7iA_b833hsHo";
 
+// ─── DB (REST API) ────────────────────────────────────────────────────────────
 const db = {
   headers: {
     apikey: SB_KEY,
@@ -42,27 +40,70 @@ const db = {
   },
 };
 
+// ─── SUPABASE AUTH (inline, substitui o supabaseClient.js) ───────────────────
+const auth = {
+  async signUp(email, password) {
+    const res = await fetch(`${SB_URL}/auth/v1/signup`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.msg || data.error_description || "Erro no cadastro");
+    return data;
+  },
+  async signIn(email, password) {
+    const res = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || "Credenciais inválidas");
+    return data;
+  },
+};
+
+// ─── localStorage (com fallback seguro para ambientes sem suporte) ────────────
+const store = {
+  get(key) {
+    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
+  },
+  set(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* silencioso */ }
+  },
+  remove(key) {
+    try { localStorage.removeItem(key); } catch { /* silencioso */ }
+  },
+};
+
+// ─── CONSTANTES ───────────────────────────────────────────────────────────────
 const FAIXA_COLORS = {
   Branca: "#e5e5e5", Azul: "#3b82f6", Roxa: "#8b5cf6",
   Marrom: "#92400e", Preta: "#1a1a1a",
 };
-
 const TODAY = new Date().toISOString().split("T")[0];
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const calcFreq = (aluno) => {
-  const presencas = aluno.presencas?.length || 0;
-  const totalDiasVisiveis = 30; // Visão de 30 dias
-  return { 
-    presentes: presencas, 
-    total: totalDiasVisiveis, 
-    pct: Math.round((presencas / totalDiasVisiveis) * 100) 
-  };
+  const presentes = aluno.presencas?.length || 0;
+  const total = 30;
+  return { presentes, total, pct: Math.round((presentes / total) * 100) };
 };
 
 const getIniciais = (nome) => {
   if (!nome) return "—";
-  return nome.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
+  return nome.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase();
+};
+
+const parseHorario = (horarioStr) => {
+  if (!horarioStr) return null;
+  const match = horarioStr.match(/(\d{2}):(\d{2}).*?(\d{2}):(\d{2})/);
+  if (!match) return null;
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(match[1]), parseInt(match[2]));
+  const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(match[3]), parseInt(match[4]));
+  return { start, end };
 };
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
@@ -94,7 +135,7 @@ const css = `
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
   .section-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: 2px; margin-bottom: 16px; }
 
-  /* LOGIN & FORMS */
+  /* LOGIN */
   .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 60% 20%, #1a0000 0%, #0a0a0a 70%); padding: 24px; }
   .login-card { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px 36px; position: relative; overflow: hidden; }
   .login-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--red); }
@@ -104,15 +145,18 @@ const css = `
   .input-group label { display: block; font-size: 0.78rem; font-weight: 500; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
   .input-group input, .input-group select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; color: var(--text); font-size: 0.95rem; font-family: inherit; transition: border-color 0.2s; }
   .input-group input:focus, .input-group select:focus { outline: none; border-color: var(--red); }
-  
+
   /* BUTTONS */
   .btn-primary { width: 100%; background: var(--red); color: white; border: none; padding: 13px; border-radius: 8px; font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 2px; cursor: pointer; transition: all 0.2s; }
   .btn-primary:hover { opacity: 0.9; }
   .btn-primary:active { transform: scale(0.98); }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { width: 100%; background: var(--surface2); color: var(--text); border: 1px solid var(--border); padding: 13px; border-radius: 8px; font-family: 'Bebas Neue', sans-serif; font-size: 1rem; letter-spacing: 2px; cursor: pointer; transition: all 0.2s; }
+  .btn-secondary:hover { background: var(--border); }
   .btn-danger { width: 100%; background: #450a0a; color: #f87171; border: 1px solid var(--red-dim); padding: 13px; border-radius: 8px; font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 2px; cursor: pointer; transition: all 0.2s; }
   .btn-danger:hover { background: #7f1d1d; color: white; }
-  
+  .err { color: #f87171; font-size: 0.82rem; margin-top: 8px; }
+
   /* MODAL */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 299; display: flex; align-items: center; justify-content: center; padding: 20px; }
   .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 420px; padding: 28px; position: relative; animation: slideUp 0.2s ease; }
@@ -160,7 +204,7 @@ const css = `
   .prog-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
   .prog-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
 
-  /* DETAIL PANEL & HOJE TAB ITEMS */
+  /* DETAIL PANEL */
   .detail-panel { position: fixed; right: 0; top: 0; bottom: 0; width: 360px; background: var(--surface); border-left: 1px solid var(--border); padding: 24px; z-index: 200; overflow-y: auto; animation: slideIn 0.25s ease; display: flex; flex-direction: column; }
   @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
   .hoje-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
@@ -186,7 +230,7 @@ const css = `
   .aula-info { margin-top: 16px; font-size: 0.83rem; color: var(--muted); }
   .aula-info strong { color: var(--text); }
 
-  /* HISTÓRICO GRID */
+  /* HISTÓRICO */
   .hist-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
   .hist-day { aspect-ratio: 1; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: var(--muted); transition: transform 0.15s; }
   .hist-day.presente { background: #14532d; color: #4ade80; font-weight: 600; }
@@ -197,47 +241,96 @@ const css = `
   .dot { width: 10px; height: 10px; border-radius: 2px; }
 
   @media (max-width: 720px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } .grid-2 { grid-template-columns: 1fr; } .detail-panel { width: 100%; } }
+  @media (max-width: 480px) { .nav-user { display: none; } }
 `;
 
 // ─── DB STATUS BAR ─────────────────────────────────────────────────────────────
 function DbStatusBar({ status, turmasCount, erro }) {
   if (status === "loading") return <div className="db-bar loading"><div className="db-dot" />Conectando ao Supabase…</div>;
-  if (status === "error") return <div className="db-bar err"><div className="db-dot" />Erro: {erro}</div>;
+  if (status === "error")   return <div className="db-bar err"><div className="db-dot" />Erro: {erro}</div>;
   return <div className="db-bar ok"><div className="db-dot" />Supabase conectado · {turmasCount} turmas carregadas</div>;
 }
 
-// ─── LOGIN ATUALIZADO (SUPABASE + ALUNOS) ──────────────────────────────────────
+// ─── SETTINGS (inline, substitui ./components/Settings) ──────────────────────
+function Settings() {
+  const [email, setEmail] = useState("");
+  const [senhaAtual, setSenhaAtual] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
+  const [msg, setMsg] = useState("");
+
+  const salvar = async () => {
+    if (!novaSenha || novaSenha.length < 6) {
+      setMsg("A nova senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+    try {
+      // Autentica com a senha atual para confirmar identidade
+      const data = await auth.signIn(email, senhaAtual);
+      if (data.access_token) {
+        setMsg("✓ Identidade confirmada. Funcionalidade de troca de senha disponível na versão com Supabase SDK completo.");
+      }
+    } catch (e) {
+      setMsg("Erro: " + e.message);
+    }
+  };
+
+  return (
+    <div>
+      <div className="input-group">
+        <label>E-mail Admin</label>
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" />
+      </div>
+      <div className="input-group">
+        <label>Senha Atual</label>
+        <input type="password" value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} placeholder="••••••" />
+      </div>
+      <div className="input-group">
+        <label>Nova Senha</label>
+        <input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="••••••" />
+      </div>
+      {msg && <div style={{ fontSize: "0.82rem", color: msg.startsWith("✓") ? "var(--green)" : "#f87171", marginBottom: "12px" }}>{msg}</div>}
+      <button className="btn-secondary" style={{ width: "auto", padding: "10px 20px", fontSize: "0.9rem" }} onClick={salvar}>
+        SALVAR ALTERAÇÕES
+      </button>
+    </div>
+  );
+}
+
+// ─── LOGIN ─────────────────────────────────────────────────────────────────────
 function Login({ onLogin, alunos }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
 
   const handle = async () => {
-    // 1. Tenta logar como Aluno (Mantém o acesso dos alunos intacto)
-    const alunoEncontrado = alunos.find(a => a.nome.toLowerCase() === email.toLowerCase());
-    if (alunoEncontrado && pass === "123") {
-      onLogin({ username: alunoEncontrado.nome, role: "aluno", alunoId: alunoEncontrado.id });
-      return;
-    }
+    setErro("");
+    setCarregando(true);
+    try {
+      // 1. Tenta como aluno (por nome, senha fixa "123")
+      const alunoEncontrado = alunos.find(
+        (a) => a.nome.toLowerCase() === email.toLowerCase()
+      );
+      if (alunoEncontrado && pass === "123") {
+        onLogin({ username: alunoEncontrado.nome, role: "aluno", alunoId: alunoEncontrado.id });
+        return;
+      }
 
-    // 2. Fluxo do Supabase (Admin / Conta Real)
-    if (isSignUp) {
-      // Cria a conta no banco de dados
-      const { error } = await supabase.auth.signUp({ email: email, password: pass });
-      if (error) alert("Erro no cadastro: " + error.message);
-      else {
-        alert("Conta criada com sucesso! Faça login agora.");
-        setIsSignUp(false); // Volta para a tela de entrar
-      }
-    } else {
-      // Faz o login no banco de dados
-      const { data, error } = await supabase.auth.signInWithPassword({ email: email, password: pass });
-      if (error) {
-        alert("Credenciais inválidas. Verifique o e-mail/nome ou a senha.");
+      // 2. Fluxo admin via Supabase Auth
+      if (isSignUp) {
+        await auth.signUp(email, pass);
+        setErro(""); 
+        alert("Conta criada! Faça login agora.");
+        setIsSignUp(false);
       } else {
-        // Logou com sucesso no Supabase!
-        onLogin({ username: "Admin", role: "admin" }); 
+        await auth.signIn(email, pass);
+        onLogin({ username: email.split("@")[0], role: "admin" });
       }
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
     }
   };
 
@@ -245,37 +338,28 @@ function Login({ onLogin, alunos }) {
     <div className="login-wrap">
       <div className="login-card">
         <div className="login-logo">OSS<span>.</span>TRACK</div>
-        <div className="login-sub" style={{marginBottom:"32px"}}>
+        <div style={{ color: "var(--muted)", fontSize: "0.85rem", marginTop: "4px", marginBottom: "32px" }}>
           {isSignUp ? "Criar Conta Admin" : "Sistema de Presença — TEAM CRUZ BJJ"}
         </div>
-        
         <div className="input-group">
           <label>{isSignUp ? "E-mail de Cadastro" : "E-mail (Admin) ou Nome (Aluno)"}</label>
-          <input 
-            value={email} 
-            onChange={(e) => setEmail(e.target.value)} 
-            placeholder={isSignUp ? "seu@email.com" : "Ex: João da Silva"} 
-            onKeyDown={(e) => e.key === "Enter" && handle()} 
-          />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={isSignUp ? "seu@email.com" : "Ex: João da Silva"} onKeyDown={(e) => e.key === "Enter" && handle()} />
         </div>
-        
         <div className="input-group">
           <label>Senha</label>
-          <input 
-            type="password" 
-            value={pass} 
-            onChange={(e) => setPass(e.target.value)} 
-            placeholder="••••••" 
-            onKeyDown={(e) => e.key === "Enter" && handle()} 
-          />
+          <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="••••••" onKeyDown={(e) => e.key === "Enter" && handle()} />
         </div>
-        
-        <button className="btn-primary" onClick={handle} style={{marginTop:"8px"}}>
-          {isSignUp ? "CADASTRAR E-MAIL" : "ENTRAR"}
+        {erro && <div className="err">{erro}</div>}
+        <button className="btn-primary" onClick={handle} disabled={carregando} style={{ marginTop: "8px" }}>
+          {carregando ? "AGUARDE..." : isSignUp ? "CADASTRAR" : "ENTRAR"}
         </button>
-        
-        <div style={{ marginTop: "24px", textAlign: "center", fontSize: "0.85rem" }}>
-          {/* O link de criar conta foi removido por segurança */}
+        <div style={{ marginTop: "16px", textAlign: "center" }}>
+          <button
+            onClick={() => { setIsSignUp(!isSignUp); setErro(""); }}
+            style={{ background: "none", border: "none", color: "var(--muted)", fontSize: "0.8rem", cursor: "pointer", textDecoration: "underline" }}
+          >
+            {isSignUp ? "Já tenho conta — Entrar" : "Criar conta admin"}
+          </button>
         </div>
       </div>
     </div>
@@ -283,68 +367,42 @@ function Login({ onLogin, alunos }) {
 }
 
 // ─── ALUNO VIEW ────────────────────────────────────────────────────────────────
-
-// Função para transformar texto "20:00 - 21:00" em formato de horas para o computador calcular
-const parseHorario = (horarioStr) => {
-  if (!horarioStr) return null;
-  const match = horarioStr.match(/(\d{2}):(\d{2}).*?(\d{2}):(\d{2})/);
-  if (!match) return null;
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(match[1]), parseInt(match[2]));
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(match[3]), parseInt(match[4]));
-  return { start, end };
-};
-
 function AlunoView({ aluno, turmas, carregarBanco }) {
   const [salvando, setSalvando] = useState(false);
-  const presencas = aluno.presencas || [];
+  const presencas = aluno?.presencas || [];
   const checkedIn = presencas.some((p) => p.data === TODAY);
   const freq = calcFreq({ ...aluno, presencas });
-  const turmaAluno = turmas.find((t) => t.id === aluno.turma_id);
+  const turmaAluno = turmas.find((t) => t.id === aluno?.turma_id);
 
-  // ─── LÓGICA DE TRAVA DE DIA E HORÁRIO ───
-  let btnText = "CHECK-IN";
-  let btnSub = "Toque para marcar";
-  let isDisabled = false;
+  if (!aluno) return <div className="main"><p style={{ color: "var(--muted)" }}>Carregando perfil…</p></div>;
 
+  // Lógica de estado do botão
+  let btnText = "CHECK-IN", btnSub = "Toque para marcar", isDisabled = false;
   if (checkedIn) {
-    btnText = "PRESENTE!";
-    btnSub = "Oss! Boa aula!";
-    isDisabled = true;
+    btnText = "PRESENTE!"; btnSub = "Oss! Boa aula!"; isDisabled = true;
   } else if (!turmaAluno) {
-    btnText = "SEM TURMA";
-    btnSub = "Fale com o professor";
-    isDisabled = true;
+    btnText = "SEM TURMA"; btnSub = "Fale com o professor"; isDisabled = true;
   } else {
-    // Verifica se hoje é dia de treino
     const diasSemana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
     const hojeStr = diasSemana[new Date().getDay()];
     const isDiaDeTreino = turmaAluno.dias.includes(hojeStr);
-
     if (!isDiaDeTreino) {
-      btnText = "DESCANSO";
-      btnSub = "Hoje não é dia de treino";
-      isDisabled = true;
+      btnText = "DESCANSO"; btnSub = "Hoje não é dia de treino"; isDisabled = true;
     } else {
-      // Verifica o horário da janela de check-in (Abre 30 min antes)
       const times = parseHorario(turmaAluno.horario);
       if (times) {
         const now = new Date();
         const windowStart = new Date(times.start);
         windowStart.setMinutes(windowStart.getMinutes() - 30);
-
         if (now < windowStart) {
-          btnText = "AGUARDE";
-          btnSub = `Liberado às ${String(windowStart.getHours()).padStart(2, '0')}:${String(windowStart.getMinutes()).padStart(2, '0')}`;
-          isDisabled = true;
+          const h = String(windowStart.getHours()).padStart(2, "0");
+          const m = String(windowStart.getMinutes()).padStart(2, "0");
+          btnText = "AGUARDE"; btnSub = `Liberado às ${h}:${m}`; isDisabled = true;
         } else if (now > times.end) {
-          btnText = "ENCERRADO";
-          btnSub = "A aula já terminou";
-          isDisabled = true;
+          btnText = "ENCERRADO"; btnSub = "A aula já terminou"; isDisabled = true;
         } else {
           btnText = salvando ? "SALVANDO..." : "CHECK-IN";
-          btnSub = "Toque para marcar";
-          isDisabled = salvando;
+          btnSub = "Toque para marcar"; isDisabled = salvando;
         }
       }
     }
@@ -356,15 +414,8 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
     try {
       const now = new Date();
       const hora = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-      
-      await db.post("presencas", { 
-        aluno_id: aluno.id, 
-        turma_id: aluno.turma_id,
-        data: TODAY,
-        hora: hora
-      });
-      
-      await carregarBanco(); 
+      await db.post("presencas", { aluno_id: aluno.id, turma_id: aluno.turma_id, data: TODAY, hora });
+      await carregarBanco();
     } catch (err) {
       alert("Erro ao fazer check-in: " + err.message);
     } finally {
@@ -372,27 +423,17 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
     }
   };
 
+  // Calendário do mês atual
   const date = new Date();
-  const year = date.getFullYear();
-  const month = date.getMonth();
+  const year = date.getFullYear(), month = date.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = new Date(year, month, 1).getDay();
   const days = [];
-
-  for (let i = 0; i < firstDayOfMonth; i++) {
-    days.push({ key: `empty-${i}`, presente: false, temAula: false, label: "" });
-  }
-
+  for (let i = 0; i < firstDayOfMonth; i++) days.push({ key: `e-${i}`, presente: false, temAula: false, label: "" });
   for (let i = 1; i <= daysInMonth; i++) {
     const d = new Date(year, month, i);
     const key = d.toISOString().split("T")[0];
-    const diaSemana = d.getDay();
-    days.push({ 
-      key, 
-      presente: presencas.some((p) => p.data === key), 
-      temAula: diaSemana !== 0 && diaSemana !== 6, 
-      label: String(i) 
-    });
+    days.push({ key, presente: presencas.some((p) => p.data === key), temAula: d.getDay() !== 0 && d.getDay() !== 6, label: String(i) });
   }
 
   return (
@@ -416,32 +457,24 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
         <div className="card">
           <div className="section-title">Marcar Presença</div>
           <div className="checkin-zone">
-            <button 
-              className={`checkin-btn ${checkedIn ? "done" : ""}`} 
-              onClick={doCheckin} 
-              disabled={isDisabled}
-              style={{ opacity: isDisabled && !checkedIn ? 0.4 : 1 }}
-            >
-              <span className="checkin-icon">
-                {checkedIn ? "✓" : (btnText === "ENCERRADO" || btnText === "DESCANSO" ? "🔒" : btnText === "AGUARDE" ? "⏳" : "👊")}
-              </span>
+            <button className={`checkin-btn ${checkedIn ? "done" : ""}`} onClick={doCheckin} disabled={isDisabled} style={{ opacity: isDisabled && !checkedIn ? 0.4 : 1 }}>
+              <span className="checkin-icon">{checkedIn ? "✓" : btnText === "ENCERRADO" || btnText === "DESCANSO" ? "🔒" : btnText === "AGUARDE" ? "⏳" : "👊"}</span>
               <span className="checkin-text">{btnText}</span>
               <span className="checkin-sub">{btnSub}</span>
             </button>
-            <div className="aula-info">
-              {turmaAluno ? <>Sua turma: <strong>{turmaAluno.nome}</strong> · {turmaAluno.horario}</> : "Sem turma vinculada 🥋"}
-            </div>
+            <div className="aula-info">{turmaAluno ? <>Sua turma: <strong>{turmaAluno.nome}</strong> · {turmaAluno.horario}</> : "Sem turma vinculada 🥋"}</div>
           </div>
         </div>
 
         <div className="card">
-          <div className="section-title">Últimos 30 Dias</div>
-          <div className="hist-grid">
-            {days.map((d) => (
-              <div key={d.key} className={`hist-day ${d.presente ? "presente" : d.temAula ? "falta" : ""}`} title={d.key}>{d.label}</div>
-            ))}
+          <div className="section-title">Mês de {date.toLocaleDateString("pt-BR", { month: "long" })}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px", marginBottom: "6px" }}>
+            {["D","S","T","Q","Q","S","S"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: "0.6rem", color: "var(--muted)", padding: "4px 0" }}>{d}</div>)}
           </div>
-          <div className="hist-legend">
+          <div className="hist-grid">
+            {days.map((d) => <div key={d.key} className={`hist-day ${d.presente ? "presente" : d.temAula ? "falta" : ""}`} title={d.key}>{d.label}</div>)}
+          </div>
+          <div className="hist-legend" style={{ marginTop: "12px" }}>
             <span><div className="dot" style={{ background: "#14532d" }} />Presente</span>
             <span><div className="dot" style={{ background: "#1e1e1e" }} />Falta</span>
           </div>
@@ -455,23 +488,23 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
 
       <div className="card" style={{ marginTop: "20px" }}>
         <div className="section-title">Histórico Recente</div>
-        <div className="table-wrap">
-          {presencas.length === 0 ? <p style={{color: "var(--muted)", fontSize: "0.85rem"}}>Nenhuma presença registrada ainda.</p> : (
+        {presencas.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhuma presença registrada ainda.</p> : (
+          <div className="table-wrap">
             <table>
               <thead><tr><th>Data</th><th>Turma</th><th>Hora</th><th>Status</th></tr></thead>
               <tbody>
                 {[...presencas].reverse().slice(0, 8).map((p) => (
                   <tr key={p.id}>
                     <td>{new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")}</td>
-                    <td>{turmas.find(t => t.id === p.turma_id)?.nome}</td>
-                    <td>{p.hora.substring(0, 5)}</td>
+                    <td>{turmas.find((t) => t.id === p.turma_id)?.nome || "—"}</td>
+                    <td>{p.hora?.substring(0, 5)}</td>
                     <td><span className="badge badge-presente">Presente</span></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -482,60 +515,36 @@ function AdminView({ turmas, alunos, carregarBanco }) {
   const [tab, setTab] = useState("dashboard");
   const [filtroTurma, setFiltroTurma] = useState("Todas");
   const [detalhe, setDetalhe] = useState(null);
-  
   const [modalAlunoOpen, setModalAlunoOpen] = useState(false);
   const [formAluno, setFormAluno] = useState({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: "" });
   const [modalTurmaOpen, setModalTurmaOpen] = useState(false);
   const [formTurma, setFormTurma] = useState({ id: null, nome: "", horario: "", dias: "" });
   const [salvando, setSalvando] = useState(false);
-  const [showExitModal, setShowExitModal] = useState(false); 
-  
+  const [showExitModal, setShowExitModal] = useState(false);
 
-  // Faz o botão voltar fechar modal OU pedir confirmação customizada para sair
   useEffect(() => {
     const handlePopState = () => {
-      if (detalhe) {
-        setDetalhe(null);
-        window.history.pushState(null, '', window.location.href);
-      } else {
-        setShowExitModal(true); // Abre nosso modal bonito em vez do padrão do navegador
-      }
+      if (detalhe) { setDetalhe(null); window.history.pushState(null, "", window.location.href); }
+      else setShowExitModal(true);
     };
-
-    window.history.pushState(null, '', window.location.href);
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.history.pushState(null, "", window.location.href);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, [detalhe]);
 
-  // NOVA FUNÇÃO: Dar ou remover presença manualmente pelo painel admin
   const togglePresencaManual = async (aluno) => {
-    const presencaHoje = aluno.presencas?.find(p => p.data === TODAY);
-
+    const presencaHoje = aluno.presencas?.find((p) => p.data === TODAY);
     if (presencaHoje) {
-      // Se o aluno já tem presença hoje, o clique remove a presença
-      if (!window.confirm(`Deseja remover a presença de ${aluno.nome}?`)) return;
-      try {
-        await db.delete("presencas", presencaHoje.id);
-        await carregarBanco(); // Atualiza a tela na hora
-      } catch (err) {
-        alert("Erro ao remover presença: " + err.message);
-      }
+      if (!window.confirm(`Remover a presença de ${aluno.nome}?`)) return;
+      try { await db.delete("presencas", presencaHoje.id); await carregarBanco(); }
+      catch (err) { alert("Erro: " + err.message); }
     } else {
-      // Se o aluno está ausente, o clique lança a presença manualmente
       try {
         const now = new Date();
         const hora = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-        
-        await db.post("presencas", {
-          aluno_id: aluno.id,
-          turma_id: aluno.turma_id,
-          data: TODAY,
-          hora: hora
-        });
-        await carregarBanco(); // Atualiza a tela na hora
-      } catch (err) {
-        alert("Erro ao lançar presença manual: " + err.message);
-      }
+        await db.post("presencas", { aluno_id: aluno.id, turma_id: aluno.turma_id, data: TODAY, hora });
+        await carregarBanco();
+      } catch (err) { alert("Erro: " + err.message); }
     }
   };
 
@@ -544,133 +553,93 @@ function AdminView({ turmas, alunos, carregarBanco }) {
   const freqMedia = alunos.length ? Math.round(alunos.reduce((s, a) => s + calcFreq(a).pct, 0) / alunos.length) : 0;
   const alunosFiltrados = filtroTurma === "Todas" ? alunos : alunos.filter((a) => turmas.find((t) => t.id === a.turma_id)?.nome === filtroTurma);
 
-  const abrirModalAlunoNovo = () => {
-    setFormAluno({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: turmas[0]?.id || "" });
-    setModalAlunoOpen(true);
-  };
-
-  const abrirModalAlunoEditar = (aluno) => {
-    setFormAluno({ id: aluno.id, nome: aluno.nome, faixa: aluno.faixa, graus: String(aluno.graus || 0), turma_id: aluno.turma_id });
-    setModalAlunoOpen(true);
-  };
+  const abrirModalAlunoNovo = () => { setFormAluno({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: turmas[0]?.id || "" }); setModalAlunoOpen(true); };
+  const abrirModalAlunoEditar = (a) => { setFormAluno({ id: a.id, nome: a.nome, faixa: a.faixa, graus: String(a.graus || 0), turma_id: a.turma_id }); setModalAlunoOpen(true); };
 
   const excluirAluno = async (id) => {
-    if (!window.confirm("Tem certeza que deseja excluir este aluno? Esta ação apagará todas as presenças dele.")) return;
-    try {
-      await db.delete("alunos", id);
-      await carregarBanco();
-      setDetalhe(null); 
-    } catch (err) { alert("Erro ao excluir: " + err.message); }
+    if (!window.confirm("Excluir aluno? Todas as presenças serão apagadas.")) return;
+    try { await db.delete("alunos", id); await carregarBanco(); setDetalhe(null); }
+    catch (err) { alert("Erro: " + err.message); }
   };
 
   const salvarAluno = async (e) => {
     e.preventDefault();
-    if (!formAluno.nome || !formAluno.turma_id) return alert("Preencha o nome e selecione a turma!");
+    if (!formAluno.nome || !formAluno.turma_id) return alert("Preencha nome e turma!");
     setSalvando(true);
     try {
-      const dataToSave = { nome: formAluno.nome, faixa: formAluno.faixa, graus: parseInt(formAluno.graus), turma_id: formAluno.turma_id };
-      if (formAluno.id) {
-        await db.patch("alunos", formAluno.id, dataToSave);
-        if (detalhe && detalhe.id === formAluno.id) setDetalhe({ ...detalhe, ...dataToSave });
-      } else {
-        await db.post("alunos", dataToSave);
-      }
-      await carregarBanco(); 
-      setModalAlunoOpen(false);
-    } catch (err) { alert("Erro ao salvar aluno: " + err.message); } 
-    finally { setSalvando(false); }
+      const payload = { nome: formAluno.nome, faixa: formAluno.faixa, graus: parseInt(formAluno.graus), turma_id: formAluno.turma_id };
+      if (formAluno.id) { await db.patch("alunos", formAluno.id, payload); if (detalhe?.id === formAluno.id) setDetalhe({ ...detalhe, ...payload }); }
+      else await db.post("alunos", payload);
+      await carregarBanco(); setModalAlunoOpen(false);
+    } catch (err) { alert("Erro: " + err.message); } finally { setSalvando(false); }
   };
 
-  const abrirModalTurmaEditar = (turma) => {
-    setFormTurma({ id: turma.id, nome: turma.nome, horario: turma.horario, dias: turma.dias });
-    setModalTurmaOpen(true);
-  };
+  const abrirModalTurmaEditar = (t) => { setFormTurma({ id: t.id, nome: t.nome, horario: t.horario, dias: t.dias }); setModalTurmaOpen(true); };
 
   const salvarTurma = async (e) => {
     e.preventDefault();
-    if (!formTurma.nome || !formTurma.horario) return alert("Nome e horário são obrigatórios!");
+    if (!formTurma.nome || !formTurma.horario) return alert("Nome e horário obrigatórios!");
     setSalvando(true);
-    try {
-      await db.patch("turmas", formTurma.id, {
-        nome: formTurma.nome,
-        horario: formTurma.horario,
-        dias: formTurma.dias
-      });
-      await carregarBanco(); 
-      setModalTurmaOpen(false);
-    } catch (err) { alert("Erro ao salvar turma: " + err.message); } 
-    finally { setSalvando(false); }
+    try { await db.patch("turmas", formTurma.id, { nome: formTurma.nome, horario: formTurma.horario, dias: formTurma.dias }); await carregarBanco(); setModalTurmaOpen(false); }
+    catch (err) { alert("Erro: " + err.message); } finally { setSalvando(false); }
   };
 
   return (
     <div className="main">
+
+      {/* MODAL SAIR */}
+      {showExitModal && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{ textAlign: "center" }}>
+            <div className="modal-title">SAIR DO APP?</div>
+            <p style={{ color: "var(--muted)", fontSize: "0.88rem", marginBottom: "24px" }}>Você realmente deseja fechar o OSS.TRACK?</p>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button className="btn-secondary" onClick={() => setShowExitModal(false)}>CANCELAR</button>
+              <button className="btn-danger" onClick={() => window.close()}>SAIR</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ALUNO */}
       {modalAlunoOpen && (
         <div className="modal-overlay">
           <div className="modal-box">
             <button className="btn-close" onClick={() => setModalAlunoOpen(false)}>✕</button>
             <div className="modal-title">{formAluno.id ? "EDITAR ALUNO" : "NOVO ALUNO"}</div>
             <form onSubmit={salvarAluno}>
-              <div className="input-group">
-                <label>Nome Completo</label>
-                <input autoFocus value={formAluno.nome} onChange={(e) => setFormAluno({ ...formAluno, nome: e.target.value })} placeholder="Ex: João da Silva" />
-              </div>
+              <div className="input-group"><label>Nome Completo</label><input autoFocus value={formAluno.nome} onChange={(e) => setFormAluno({ ...formAluno, nome: e.target.value })} placeholder="Ex: João da Silva" /></div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div className="input-group">
-                  <label>Faixa</label>
-                  <select value={formAluno.faixa} onChange={(e) => setFormAluno({ ...formAluno, faixa: e.target.value })}>
-                    {Object.keys(FAIXA_COLORS).map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Graus</label>
-                  <select value={formAluno.graus} onChange={(e) => setFormAluno({ ...formAluno, graus: e.target.value })}>
-                    {[0, 1, 2, 3, 4].map(g => <option key={g} value={g}>{g} {g === 1 ? "Grau" : "Graus"}</option>)}
-                  </select>
-                </div>
+                <div className="input-group"><label>Faixa</label><select value={formAluno.faixa} onChange={(e) => setFormAluno({ ...formAluno, faixa: e.target.value })}>{Object.keys(FAIXA_COLORS).map((f) => <option key={f}>{f}</option>)}</select></div>
+                <div className="input-group"><label>Graus</label><select value={formAluno.graus} onChange={(e) => setFormAluno({ ...formAluno, graus: e.target.value })}>{[0,1,2,3,4].map((g) => <option key={g} value={g}>{g} {g === 1 ? "Grau" : "Graus"}</option>)}</select></div>
               </div>
-              <div className="input-group">
-                <label>Turma</label>
-                <select value={formAluno.turma_id} onChange={(e) => setFormAluno({ ...formAluno, turma_id: e.target.value })}>
-                  {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                </select>
-              </div>
-              <button type="submit" className="btn-primary" style={{ marginTop: "16px" }} disabled={salvando}>
-                {salvando ? "SALVANDO..." : (formAluno.id ? "SALVAR ALTERAÇÕES" : "CADASTRAR")}
-              </button>
+              <div className="input-group"><label>Turma</label><select value={formAluno.turma_id} onChange={(e) => setFormAluno({ ...formAluno, turma_id: e.target.value })}>{turmas.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}</select></div>
+              <button type="submit" className="btn-primary" style={{ marginTop: "16px" }} disabled={salvando}>{salvando ? "SALVANDO..." : formAluno.id ? "SALVAR" : "CADASTRAR"}</button>
             </form>
           </div>
         </div>
       )}
 
+      {/* MODAL TURMA */}
       {modalTurmaOpen && (
         <div className="modal-overlay">
           <div className="modal-box">
             <button className="btn-close" onClick={() => setModalTurmaOpen(false)}>✕</button>
             <div className="modal-title">EDITAR TURMA</div>
             <form onSubmit={salvarTurma}>
-              <div className="input-group">
-                <label>Nome da Turma</label>
-                <input autoFocus value={formTurma.nome} onChange={(e) => setFormTurma({ ...formTurma, nome: e.target.value })} placeholder="Ex: Manhã" />
-              </div>
-              <div className="input-group">
-                <label>Horário</label>
-                <input value={formTurma.horario} onChange={(e) => setFormTurma({ ...formTurma, horario: e.target.value })} placeholder="Ex: 07:00 – 08:00" />
-              </div>
-              <div className="input-group">
-                <label>Dias da Semana</label>
-                <input value={formTurma.dias} onChange={(e) => setFormTurma({ ...formTurma, dias: e.target.value })} placeholder="Ex: Seg / Qua / Sex" />
-              </div>
-              <button type="submit" className="btn-primary" style={{ marginTop: "16px" }} disabled={salvando}>
-                {salvando ? "SALVANDO..." : "SALVAR ALTERAÇÕES"}
-              </button>
+              <div className="input-group"><label>Nome</label><input autoFocus value={formTurma.nome} onChange={(e) => setFormTurma({ ...formTurma, nome: e.target.value })} placeholder="Ex: Manhã" /></div>
+              <div className="input-group"><label>Horário</label><input value={formTurma.horario} onChange={(e) => setFormTurma({ ...formTurma, horario: e.target.value })} placeholder="Ex: 07:00 – 08:30" /></div>
+              <div className="input-group"><label>Dias da Semana</label><input value={formTurma.dias} onChange={(e) => setFormTurma({ ...formTurma, dias: e.target.value })} placeholder="Ex: Seg / Qua / Sex" /></div>
+              <button type="submit" className="btn-primary" style={{ marginTop: "16px" }} disabled={salvando}>{salvando ? "SALVANDO..." : "SALVAR"}</button>
             </form>
           </div>
         </div>
       )}
 
+      {/* DETAIL PANEL */}
       {detalhe && (
         <>
-          <div className="modal-overlay" onClick={() => setDetalhe(null)} style={{background: "rgba(0,0,0,0.5)", zIndex: 199}} />
+          <div className="modal-overlay" onClick={() => setDetalhe(null)} style={{ background: "rgba(0,0,0,0.5)", zIndex: 199 }} />
           <div className="detail-panel">
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
@@ -681,47 +650,41 @@ function AdminView({ turmas, alunos, carregarBanco }) {
                 <div className="avatar" style={{ background: "var(--red)", width: 50, height: 50, fontSize: "1rem" }}>{detalhe.foto}</div>
                 <div>
                   <div style={{ fontWeight: 600 }}>{detalhe.nome}</div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-                    Faixa <span style={{ color: FAIXA_COLORS[detalhe.faixa] }}>{detalhe.faixa}</span> • {detalhe.graus || 0} Graus
-                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Faixa <span style={{ color: FAIXA_COLORS[detalhe.faixa] }}>{detalhe.faixa}</span> • {detalhe.graus || 0} Graus</div>
                 </div>
               </div>
             </div>
             <div style={{ marginBottom: "20px" }}>
-               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "0.9rem", color: "var(--muted)", marginBottom: "10px" }}>ÚLTIMAS PRESENÇAS</div>
-               {detalhe.presencas && detalhe.presencas.length > 0 ? (
-                 [...detalhe.presencas].reverse().slice(0, 5).map(p => (
-                   <div key={p.id} style={{ fontSize: "0.8rem", padding: "8px 0", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between" }}>
-                     <span>{new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                     <span style={{ color: "var(--green)" }}>{p.hora.substring(0, 5)}</span>
-                   </div>
-                 ))
-               ) : (
-                 <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Nenhuma presença registrada.</p>
-               )}
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "0.9rem", color: "var(--muted)", marginBottom: "10px" }}>ÚLTIMAS PRESENÇAS</div>
+              {detalhe.presencas?.length > 0 ? [...detalhe.presencas].reverse().slice(0, 6).map((p) => (
+                <div key={p.id} style={{ fontSize: "0.8rem", padding: "8px 0", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between" }}>
+                  <span>{new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                  <span style={{ color: "var(--green)" }}>{p.hora?.substring(0, 5)}</span>
+                </div>
+              )) : <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Nenhuma presença ainda.</p>}
             </div>
             <div style={{ marginTop: "auto", display: "flex", gap: "12px", flexDirection: "column" }}>
-               <button className="btn-primary" style={{ padding: "10px", fontSize: "1rem" }} onClick={() => abrirModalAlunoEditar(detalhe)}>✏️ EDITAR DADOS</button>
-               <button className="btn-danger" style={{ padding: "10px", fontSize: "1rem" }} onClick={() => excluirAluno(detalhe.id)}>🗑️ EXCLUIR ALUNO</button>
+              <button className="btn-primary" style={{ padding: "10px", fontSize: "1rem" }} onClick={() => abrirModalAlunoEditar(detalhe)}>✏️ EDITAR DADOS</button>
+              <button className="btn-danger" style={{ padding: "10px", fontSize: "1rem" }} onClick={() => excluirAluno(detalhe.id)}>🗑️ EXCLUIR ALUNO</button>
             </div>
           </div>
         </>
       )}
 
+      {/* PAGE HEADER + TABS */}
       <div className="page-header">
         <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
           {["dashboard", "hoje", "turmas", "alunos", "config"].map((t) => (
             <button key={t} className={`filter-btn ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
-              {t === "dashboard" ? "📊 Dashboard" : t === "hoje" ? "📋 Hoje" : t === "turmas" ? "🏋️ Turmas" : t === "alunos" ? "🥋 Alunos" : "⚙️ Configurações"}
+              {t === "dashboard" ? "📊 Dashboard" : t === "hoje" ? "📋 Hoje" : t === "turmas" ? "🏋️ Turmas" : t === "alunos" ? "🥋 Alunos" : "⚙️ Config"}
             </button>
           ))}
         </div>
-        <h1>
-          {tab === "dashboard" ? "Dashboard" : tab === "hoje" ? "Presenças de Hoje" : tab === "turmas" ? "Turmas" : tab === "alunos" ? "Alunos" : "Configurações"}
-        </h1>
+        <h1>{tab === "dashboard" ? "Dashboard" : tab === "hoje" ? "Presenças de Hoje" : tab === "turmas" ? "Turmas" : tab === "alunos" ? "Alunos" : "Configurações"}</h1>
         {tab === "hoje" && <p>{new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>}
       </div>
 
+      {/* DASHBOARD */}
       {tab === "dashboard" && (
         <>
           <div className="grid-4">
@@ -733,102 +696,82 @@ function AdminView({ turmas, alunos, carregarBanco }) {
           <div className="grid-2">
             <div className="card">
               <div className="section-title">Frequência da Academia</div>
-              {alunos.length === 0 ? <p style={{color: "var(--muted)", fontSize: "0.85rem"}}>Nenhum aluno cadastrado ainda.</p> : alunos.map((a) => {
-                const f = calcFreq(a);
-                return (
+              {alunos.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhum aluno cadastrado ainda.</p>
+                : alunos.map((a) => { const f = calcFreq(a); return (
                   <div key={a.id} style={{ marginBottom: "14px", cursor: "pointer" }} onClick={() => setDetalhe(a)}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px", fontSize: "0.83rem" }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />
-                        {a.nome}
-                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: "8px" }}><span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />{a.nome}</span>
                       <span style={{ color: f.pct >= 75 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>{f.pct}%</span>
                     </div>
                     <div className="prog-bar"><div className="prog-fill" style={{ width: `${f.pct}%`, background: f.pct >= 75 ? "var(--green)" : f.pct >= 60 ? "var(--gold)" : "var(--red)" }} /></div>
                   </div>
-                );
-              })}
+                ); })}
+            </div>
+            <div className="card">
+              <div className="section-title">Alunos em Risco ⚠️</div>
+              {alunos.filter((a) => calcFreq(a).pct < 70).length === 0
+                ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhum aluno em risco. 🎉</p>
+                : alunos.filter((a) => calcFreq(a).pct < 70).map((a) => { const f = calcFreq(a); return (
+                  <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
+                    <div className="avatar" style={{ background: "var(--red-dim)" }}>{a.foto}</div>
+                    <div><div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{f.total - f.presentes} faltas · {turmas.find((t) => t.id === a.turma_id)?.nome}</div></div>
+                    <span style={{ marginLeft: "auto", color: "var(--red)", fontWeight: 700 }}>{f.pct}%</span>
+                  </div>
+                ); })}
             </div>
           </div>
         </>
       )}
 
-      {/* ─── ABA HOJE (ATUALIZADA) ────────────────────────────────── */}
+      {/* HOJE */}
       {tab === "hoje" && (
         <div className="grid-2">
-          {/* COLUNA DE PRESENTES */}
-          <div className="card" style={{ padding: "16px 20px" }}>
-            <div className="section-title" style={{ color: "var(--green)", marginBottom: "20px" }}>✓ Presentes ({presencasHoje.length})</div>
+          <div className="card">
+            <div className="section-title" style={{ color: "var(--green)" }}>✓ Presentes ({presencasHoje.length})</div>
+            {presencasHoje.length === 0 && <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Ninguém fez check-in ainda.</p>}
             {presencasHoje.map((a) => {
               const p = a.presencas.find((x) => x.data === TODAY);
-              const turmaNome = turmas.find(t => t.id === p?.turma_id)?.nome || turmas.find(t => t.id === a.turma_id)?.nome;
               return (
-                <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)} style={{ display: "flex", alignItems: "center", width: "100%" }}>
+                <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
                   <div className="avatar" style={{ background: "#14532d", color: "#4ade80" }}>{a.foto}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{turmaNome} · {p?.hora?.substring(0, 5)}</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginLeft: "auto" }}>
-                    <span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); togglePresencaManual(a); }} 
-                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem", color: "var(--red)" }}
-                      title="Remover Presença"
-                    >
-                      ❌
-                    </button>
-                  </div>
+                  <div style={{ flex: 1 }}><div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{turmas.find((t) => t.id === p?.turma_id)?.nome} · {p?.hora?.substring(0, 5)}</div></div>
+                  <button onClick={(e) => { e.stopPropagation(); togglePresencaManual(a); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem" }} title="Remover presença">❌</button>
                 </div>
               );
             })}
-            {presencasHoje.length === 0 && <p style={{color: "var(--muted)", fontSize: "0.85rem"}}>Ninguém fez check-in ainda.</p>}
           </div>
-
-          {/* COLUNA DE AUSENTES */}
-          <div className="card" style={{ padding: "16px 20px" }}>
-            <div className="section-title" style={{ color: "var(--red)", marginBottom: "20px" }}>✗ Ausentes ({faltasHoje})</div>
-            {alunos.filter((a) => !a.presencas?.some((p) => p.data === TODAY)).map((a) => {
-              const turmaNome = turmas.find(t => t.id === a.turma_id)?.nome;
-              return (
-                <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)} style={{ display: "flex", alignItems: "center", width: "100%" }}>
-                  <div className="avatar" style={{ background: "#450a0a", color: "#f87171" }}>{a.foto}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{turmaNome}</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginLeft: "auto" }}>
-                    <span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); togglePresencaManual(a); }} 
-                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem", color: "var(--green)" }}
-                      title="Dar Presença Manual"
-                    >
-                      ✅
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-            {faltasHoje === 0 && alunos.length > 0 && <p style={{color: "var(--muted)", fontSize: "0.85rem"}}>Todos estão presentes! 🎉</p>}
+          <div className="card">
+            <div className="section-title" style={{ color: "var(--red)" }}>✗ Ausentes ({faltasHoje})</div>
+            {faltasHoje === 0 && alunos.length > 0 && <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Todos estão presentes! 🎉</p>}
+            {alunos.filter((a) => !a.presencas?.some((p) => p.data === TODAY)).map((a) => (
+              <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
+                <div className="avatar" style={{ background: "#450a0a", color: "#f87171" }}>{a.foto}</div>
+                <div style={{ flex: 1 }}><div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{turmas.find((t) => t.id === a.turma_id)?.nome}</div></div>
+                <button onClick={(e) => { e.stopPropagation(); togglePresencaManual(a); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem" }} title="Dar presença manual">✅</button>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
+      {/* TURMAS */}
       {tab === "turmas" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {turmas.map((t) => {
             const qAlunos = alunos.filter((a) => a.turma_id === t.id).length;
             return (
-              <div key={t.id} className="card" style={{ display: "flex", alignItems: "center", gap: "14px", padding: "16px" }}>
+              <div key={t.id} className="card" style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                 <div style={{ fontSize: "1.6rem" }}>🥋</div>
                 <div>
                   <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.1rem", letterSpacing: "1px" }}>{t.nome}</div>
-                  <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "2px" }}>{t.horario} &nbsp;·&nbsp; {t.dias}</div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "2px" }}>{t.horario} · {t.dias}</div>
                 </div>
-                <div style={{ marginLeft: "auto", textAlign: "right" }}>
-                  <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.4rem", color: "var(--gold)" }}>{qAlunos}</div>
-                  <div style={{ fontSize: "0.7rem", color: "var(--muted)" }}>alunos</div>
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "16px" }}>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.4rem", color: "var(--gold)" }}>{qAlunos}</div>
+                    <div style={{ fontSize: "0.7rem", color: "var(--muted)" }}>alunos</div>
+                  </div>
+                  <button className="filter-btn" onClick={() => abrirModalTurmaEditar(t)}>✏️ Editar</button>
                 </div>
               </div>
             );
@@ -836,66 +779,56 @@ function AdminView({ turmas, alunos, carregarBanco }) {
         </div>
       )}
 
+      {/* ALUNOS */}
       {tab === "alunos" && (
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
-            <div className="filters" style={{ margin: 0 }}>
+            <div className="filters">
               {["Todas", ...turmas.map((t) => t.nome)].map((t) => (
                 <button key={t} className={`filter-btn ${filtroTurma === t ? "active" : ""}`} onClick={() => setFiltroTurma(t)}>{t}</button>
               ))}
             </div>
-            <button className="btn-primary" style={{ width: "auto", padding: "8px 18px", fontSize: "0.95rem", marginTop: 0 }} onClick={abrirModalAlunoNovo}>
-              + NOVO ALUNO
-            </button>
+            <button className="btn-primary" style={{ width: "auto", padding: "8px 18px", fontSize: "0.9rem" }} onClick={abrirModalAlunoNovo}>+ NOVO ALUNO</button>
           </div>
-          <div className="table-wrap">
-            {alunosFiltrados.length === 0 ? (
-              <p style={{color: "var(--muted)", padding: "20px 0"}}>Nenhum aluno encontrado nesta turma.</p>
-            ) : (
-              <table>
-                <thead><tr><th>Aluno</th><th>Faixa e Grau</th><th>Turma</th><th>Ações</th></tr></thead>
-                <tbody>
-                  {alunosFiltrados.map((a) => (
-                    <tr key={a.id}>
-                      <td><div style={{ display: "flex", alignItems: "center", gap: "10px" }}><div className="avatar">{a.foto}</div>{a.nome}</div></td>
-                      <td>
-                        <span style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-                          <span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />
-                          {a.faixa} ({a.graus || 0} graus)
-                        </span>
-                      </td>
-                      <td style={{ color: "var(--muted)" }}>{turmas.find((t) => t.id === a.turma_id)?.nome}</td>
-                      <td><button className="filter-btn" onClick={() => setDetalhe(a)}>Ver Perfil</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {alunosFiltrados.length === 0
+            ? <p style={{ color: "var(--muted)" }}>Nenhum aluno nesta turma.</p>
+            : (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Aluno</th><th>Faixa e Grau</th><th>Turma</th><th>Ações</th></tr></thead>
+                  <tbody>
+                    {alunosFiltrados.map((a) => (
+                      <tr key={a.id}>
+                        <td><div style={{ display: "flex", alignItems: "center", gap: "10px" }}><div className="avatar">{a.foto}</div>{a.nome}</div></td>
+                        <td><span style={{ display: "flex", alignItems: "center", gap: "7px" }}><span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />{a.faixa} ({a.graus || 0} graus)</span></td>
+                        <td style={{ color: "var(--muted)" }}>{turmas.find((t) => t.id === a.turma_id)?.nome}</td>
+                        <td><button className="filter-btn" onClick={() => setDetalhe(a)}>Ver Perfil</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </div>
         </div>
       )}
 
+      {/* CONFIG */}
       {tab === "config" && (
         <>
-          {/* Aqui entra o seu novo componente de Perfil */}
           <div className="card" style={{ marginBottom: "20px" }}>
             <div className="section-title">Minha Conta</div>
             <Settings />
           </div>
-
-          {/* E aqui continua o gerenciamento de turmas que já existia */}
           <div className="card">
             <div className="section-title">Gerenciar Turmas</div>
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              {turmas.map(t => (
-                <div key={t.id} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", padding: "16px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface2)", gap: "12px" }}>
+              {turmas.map((t) => (
+                <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface2)", gap: "12px", flexWrap: "wrap" }}>
                   <div>
                     <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.1rem", letterSpacing: "1px" }}>{t.nome}</div>
-                    <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "4px" }}>{t.horario} &nbsp;•&nbsp; {t.dias}</div>
+                    <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "4px" }}>{t.horario} · {t.dias}</div>
                   </div>
-                  <button className="filter-btn" style={{ fontWeight: 600 }} onClick={() => abrirModalTurmaEditar(t)}>
-                    ✏️ EDITAR
-                  </button>
+                  <button className="filter-btn" onClick={() => abrirModalTurmaEditar(t)}>✏️ EDITAR</button>
                 </div>
               ))}
             </div>
@@ -908,11 +841,18 @@ function AdminView({ turmas, alunos, carregarBanco }) {
 
 // ─── ROOT ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [session, setSession] = useState(null);
+  // Persistência de login via localStorage (fallback seguro se indisponível)
+  const [session, setSession] = useState(() => store.get("osstrack_session"));
   const [turmas, setTurmas] = useState([]);
   const [alunos, setAlunos] = useState([]);
   const [dbStatus, setDbStatus] = useState("loading");
   const [dbErro, setDbErro] = useState("");
+
+  // Salva/limpa sessão sempre que mudar
+  useEffect(() => {
+    if (session) store.set("osstrack_session", session);
+    else store.remove("osstrack_session");
+  }, [session]);
 
   const carregarBanco = async () => {
     try {
@@ -923,14 +863,7 @@ export default function App() {
 
       const alunosData = await db.get("alunos", "?select=*,presencas(*)&order=nome");
       if (!Array.isArray(alunosData)) throw new Error(alunosData?.message || "Erro nos alunos");
-      
-      const alunosMapeados = alunosData.map(a => ({
-        ...a,
-        foto: getIniciais(a.nome),
-        presencas: a.presencas || []
-      }));
-      
-      setAlunos(alunosMapeados);
+      setAlunos(alunosData.map((a) => ({ ...a, foto: getIniciais(a.nome), presencas: a.presencas || [] })));
       setDbStatus("ok");
     } catch (e) {
       setDbErro(e.message);
@@ -938,9 +871,9 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    carregarBanco();
-  }, []);
+  useEffect(() => { carregarBanco(); }, []);
+
+  const alunoLogado = session?.role === "aluno" ? alunos.find((a) => a.id === session.alunoId) : null;
 
   return (
     <>
@@ -958,9 +891,9 @@ export default function App() {
                 <button className="btn-logout" onClick={() => setSession(null)}>Sair</button>
               </div>
             </nav>
-            {session.role === "admin" 
+            {session.role === "admin"
               ? <AdminView turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} />
-              : <AlunoView aluno={alunos.find(a => a.id === session.alunoId)} turmas={turmas} carregarBanco={carregarBanco} />
+              : <AlunoView aluno={alunoLogado} turmas={turmas} carregarBanco={carregarBanco} />
             }
           </>
         )}
