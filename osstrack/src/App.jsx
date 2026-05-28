@@ -318,15 +318,8 @@ function Login({ onLogin, alunos }) {
       }
 
       // 2. Fluxo admin via Supabase Auth
-      if (isSignUp) {
-        await auth.signUp(email, pass);
-        setErro(""); 
-        alert("Conta criada! Faça login agora.");
-        setIsSignUp(false);
-      } else {
-        await auth.signIn(email, pass);
-        onLogin({ username: email.split("@")[0], role: "admin" });
-      }
+      await auth.signIn(email, pass);
+      onLogin({ username: email.split("@")[0], role: "admin" });
     } catch (e) {
       setErro(e.message);
     } finally {
@@ -353,14 +346,6 @@ function Login({ onLogin, alunos }) {
         <button className="btn-primary" onClick={handle} disabled={carregando} style={{ marginTop: "8px" }}>
           {carregando ? "AGUARDE..." : isSignUp ? "CADASTRAR" : "ENTRAR"}
         </button>
-        <div style={{ marginTop: "16px", textAlign: "center" }}>
-          <button
-            onClick={() => { setIsSignUp(!isSignUp); setErro(""); }}
-            style={{ background: "none", border: "none", color: "var(--muted)", fontSize: "0.8rem", cursor: "pointer", textDecoration: "underline" }}
-          >
-            {isSignUp ? "Já tenho conta — Entrar" : "Criar conta admin"}
-          </button>
-        </div>
       </div>
     </div>
   );
