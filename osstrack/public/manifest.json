@@ -1,0 +1,21 @@
+{
+  "name": "OSS.TRACK",
+  "short_name": "OSS.TRACK",
+  "description": "Sistema de Gestão e Presença BJJ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#dc2626",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3063/3063345.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3063/3063345.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

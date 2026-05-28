@@ -283,6 +283,18 @@ function Login({ onLogin, alunos }) {
 }
 
 // ─── ALUNO VIEW ────────────────────────────────────────────────────────────────
+
+// Função para transformar texto "20:00 - 21:00" em formato de horas para o computador calcular
+const parseHorario = (horarioStr) => {
+  if (!horarioStr) return null;
+  const match = horarioStr.match(/(\d{2}):(\d{2}).*?(\d{2}):(\d{2})/);
+  if (!match) return null;
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(match[1]), parseInt(match[2]));
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(match[3]), parseInt(match[4]));
+  return { start, end };
+};
+
 function AlunoView({ aluno, turmas, carregarBanco }) {
   const [salvando, setSalvando] = useState(false);
   const presencas = aluno.presencas || [];
@@ -290,8 +302,56 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
   const freq = calcFreq({ ...aluno, presencas });
   const turmaAluno = turmas.find((t) => t.id === aluno.turma_id);
 
+  // ─── LÓGICA DE TRAVA DE DIA E HORÁRIO ───
+  let btnText = "CHECK-IN";
+  let btnSub = "Toque para marcar";
+  let isDisabled = false;
+
+  if (checkedIn) {
+    btnText = "PRESENTE!";
+    btnSub = "Oss! Boa aula!";
+    isDisabled = true;
+  } else if (!turmaAluno) {
+    btnText = "SEM TURMA";
+    btnSub = "Fale com o professor";
+    isDisabled = true;
+  } else {
+    // Verifica se hoje é dia de treino
+    const diasSemana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const hojeStr = diasSemana[new Date().getDay()];
+    const isDiaDeTreino = turmaAluno.dias.includes(hojeStr);
+
+    if (!isDiaDeTreino) {
+      btnText = "DESCANSO";
+      btnSub = "Hoje não é dia de treino";
+      isDisabled = true;
+    } else {
+      // Verifica o horário da janela de check-in (Abre 30 min antes)
+      const times = parseHorario(turmaAluno.horario);
+      if (times) {
+        const now = new Date();
+        const windowStart = new Date(times.start);
+        windowStart.setMinutes(windowStart.getMinutes() - 30);
+
+        if (now < windowStart) {
+          btnText = "AGUARDE";
+          btnSub = `Liberado às ${String(windowStart.getHours()).padStart(2, '0')}:${String(windowStart.getMinutes()).padStart(2, '0')}`;
+          isDisabled = true;
+        } else if (now > times.end) {
+          btnText = "ENCERRADO";
+          btnSub = "A aula já terminou";
+          isDisabled = true;
+        } else {
+          btnText = salvando ? "SALVANDO..." : "CHECK-IN";
+          btnSub = "Toque para marcar";
+          isDisabled = salvando;
+        }
+      }
+    }
+  }
+
   const doCheckin = async () => {
-    if (checkedIn || !turmaAluno) return;
+    if (isDisabled) return;
     setSalvando(true);
     try {
       const now = new Date();
@@ -315,21 +375,14 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
   const date = new Date();
   const year = date.getFullYear();
   const month = date.getMonth();
-  
-  // Quantos dias tem o mês atual?
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  
-  // Em que dia da semana começa o mês? (0 = Domingo, 1 = Segunda...)
   const firstDayOfMonth = new Date(year, month, 1).getDay();
-
   const days = [];
 
-  // 1. Preencher com espaços vazios antes do dia 1
   for (let i = 0; i < firstDayOfMonth; i++) {
     days.push({ key: `empty-${i}`, presente: false, temAula: false, label: "" });
   }
 
-  // 2. Preencher os dias do mês
   for (let i = 1; i <= daysInMonth; i++) {
     const d = new Date(year, month, i);
     const key = d.toISOString().split("T")[0];
@@ -337,7 +390,7 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
     days.push({ 
       key, 
       presente: presencas.some((p) => p.data === key), 
-      temAula: diaSemana !== 0 && diaSemana !== 6, // Considera sábado/domingo como sem aula
+      temAula: diaSemana !== 0 && diaSemana !== 6, 
       label: String(i) 
     });
   }
@@ -363,10 +416,17 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
         <div className="card">
           <div className="section-title">Marcar Presença</div>
           <div className="checkin-zone">
-            <button className={`checkin-btn ${checkedIn ? "done" : ""}`} onClick={doCheckin} disabled={checkedIn || salvando}>
-              <span className="checkin-icon">{checkedIn ? "✓" : "👊"}</span>
-              <span className="checkin-text">{salvando ? "SALVANDO..." : (checkedIn ? "PRESENTE!" : "CHECK-IN")}</span>
-              <span className="checkin-sub">{checkedIn ? "Oss! Boa aula!" : "Toque para marcar"}</span>
+            <button 
+              className={`checkin-btn ${checkedIn ? "done" : ""}`} 
+              onClick={doCheckin} 
+              disabled={isDisabled}
+              style={{ opacity: isDisabled && !checkedIn ? 0.4 : 1 }}
+            >
+              <span className="checkin-icon">
+                {checkedIn ? "✓" : (btnText === "ENCERRADO" || btnText === "DESCANSO" ? "🔒" : btnText === "AGUARDE" ? "⏳" : "👊")}
+              </span>
+              <span className="checkin-text">{btnText}</span>
+              <span className="checkin-sub">{btnSub}</span>
             </button>
             <div className="aula-info">
               {turmaAluno ? <>Sua turma: <strong>{turmaAluno.nome}</strong> · {turmaAluno.horario}</> : "Sem turma vinculada 🥋"}
