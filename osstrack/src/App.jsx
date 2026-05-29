@@ -2,76 +2,50 @@ import { useState, useEffect } from "react";
 import './styles/global.css';
 import { db, auth } from './services/api';
 
-// ─── localStorage (com fallback seguro para ambientes sem suporte) ────────────
+// ─── localStorage ─────────────────────────────────────────────────────────────
 const store = {
-  get(key) {
-    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
-  },
-  set(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* silencioso */ }
-  },
-  remove(key) {
-    try { localStorage.removeItem(key); } catch { /* silencioso */ }
-  },
+  get(key) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; } },
+  set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { } },
+  remove(key) { try { localStorage.removeItem(key); } catch { } },
 };
 
-// ─── CONSTANTES E DATAS LOCAIS ────────────────────────────────────────────────
+// ─── CONSTANTES ───────────────────────────────────────────────────────────────
 const FAIXA_COLORS = {
-  Branca: "#e5e5e5", 
-  Cinza: "#9ca3af",
-  Amarela: "#eab308",
-  Laranja: "#f97316",
-  Verde: "#22c55e",
-  Azul: "#3b82f6", 
-  Roxa: "#8b5cf6",
-  Marrom: "#92400e", 
-  Preta: "#1a1a1a",
+  Branca: "#e5e5e5", Cinza: "#9ca3af", Amarela: "#eab308", Laranja: "#f97316",
+  Verde: "#22c55e", Azul: "#3b82f6", Roxa: "#8b5cf6", Marrom: "#92400e", Preta: "#1a1a1a",
 };
 
-// Função inteligente que pega sempre a data atual baseada no fuso do Brasil
 const getToday = () => {
   const d = new Date();
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0') + "-" + String(d.getDate()).padStart(2, '0');
 };
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
-
-// NOVO: Cálculo inteligente que conta só os dias de treino desde que o aluno entrou!
 const calcFreq = (aluno, turmas) => {
   const presentes = aluno.presencas?.length || 0;
-  let total = 30; // fallback padrão
-
+  let total = 30;
   if (aluno.created_at && turmas) {
     const turma = turmas.find(t => t.id === aluno.turma_id);
     if (turma && turma.dias) {
       const diasMap = { "Dom": 0, "Seg": 1, "Ter": 2, "Qua": 3, "Qui": 4, "Sex": 5, "Sáb": 6 };
-      // Pega os dias ex: "Seg / Qua / Sex" e limpa para achar o número da semana
       const diasAtivos = turma.dias.split(/[\/,]/).map(d => d.trim().substring(0, 3));
       const indicesAtivos = diasAtivos.map(d => diasMap[d]).filter(d => d !== undefined);
-
       if (indicesAtivos.length > 0) {
         let count = 0;
         let currentDate = new Date(aluno.created_at);
-        currentDate.setHours(0, 0, 0, 0); // Zera as horas para contar só dias
+        currentDate.setHours(0, 0, 0, 0);
         const endDate = new Date();
         endDate.setHours(0, 0, 0, 0);
-
-        // Caminha dia por dia do cadastro até hoje, somando só se tiver treino!
         while (currentDate <= endDate) {
-          if (indicesAtivos.includes(currentDate.getDay())) {
-            count++;
-          }
+          if (indicesAtivos.includes(currentDate.getDay())) count++;
           currentDate.setDate(currentDate.getDate() + 1);
         }
         total = count;
       }
     }
   }
-
-  // Prevenção de bugs: o total nunca pode ser menor que presenças ou zero
   if (total < presentes) total = presentes;
   if (total === 0) total = 1;
-
   return { presentes, total, pct: Math.round((presentes / total) * 100) };
 };
 
@@ -90,6 +64,29 @@ const parseHorario = (horarioStr) => {
   return { start, end };
 };
 
+// ─── HELPERS DE ANIVERSÁRIO ────────────────────────────────────────────────────
+const getAniversariantesMes = (alunos) => {
+  const mesAtual = new Date().getMonth() + 1;
+  const diaAtual = new Date().getDate();
+  return alunos
+    .filter((a) => {
+      if (!a.data_nascimento) return false;
+      const [, mes] = a.data_nascimento.split("-");
+      return parseInt(mes) === mesAtual;
+    })
+    .map((a) => {
+      const [, , dia] = a.data_nascimento.split("-");
+      const isHoje = parseInt(dia) === diaAtual;
+      return { ...a, diaAniversario: parseInt(dia), isHoje };
+    })
+    .sort((a, b) => a.diaAniversario - b.diaAniversario);
+};
+
+const enviarParabensWhatsApp = (aluno, nomeAcademia) => {
+  const msg = `🥋 *Ossss, ${aluno.nome}!* 🎂\n\nA família *${nomeAcademia}* deseja a você um feliz aniversário! 🎉\n\nQue esse novo ciclo traga muito treino, evolução e saúde!\n\n*Oss!* 🤜🤛`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+};
+
 // ─── DB STATUS BAR ─────────────────────────────────────────────────────────────
 function DbStatusBar({ status, turmasCount, erro }) {
   if (status === "loading") return <div className="db-bar loading"><div className="db-dot" />Conectando ao Supabase…</div>;
@@ -97,7 +94,7 @@ function DbStatusBar({ status, turmasCount, erro }) {
   return <div className="db-bar ok"><div className="db-dot" />Supabase conectado · {turmasCount} turmas carregadas</div>;
 }
 
-// ─── SETTINGS ──────────────────────────────────────────────────────
+// ─── SETTINGS ─────────────────────────────────────────────────────────────────
 function Settings() {
   const [email, setEmail] = useState("");
   const [senhaAtual, setSenhaAtual] = useState("");
@@ -105,38 +102,20 @@ function Settings() {
   const [msg, setMsg] = useState("");
 
   const salvar = async () => {
-    if (!novaSenha || novaSenha.length < 6) {
-      setMsg("A nova senha precisa ter pelo menos 6 caracteres.");
-      return;
-    }
+    if (!novaSenha || novaSenha.length < 6) { setMsg("A nova senha precisa ter pelo menos 6 caracteres."); return; }
     try {
       const data = await auth.signIn(email, senhaAtual);
-      if (data.access_token) {
-        setMsg("✓ Identidade confirmada. Funcionalidade de troca de senha disponível na versão com Supabase SDK completo.");
-      }
-    } catch (e) {
-      setMsg("Erro: " + e.message);
-    }
+      if (data.access_token) setMsg("✓ Identidade confirmada. Troca de senha disponível na versão com Supabase SDK completo.");
+    } catch (e) { setMsg("Erro: " + e.message); }
   };
 
   return (
     <div>
-      <div className="input-group">
-        <label>E-mail Admin</label>
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" />
-      </div>
-      <div className="input-group">
-        <label>Senha Atual</label>
-        <input type="password" value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} placeholder="••••••" />
-      </div>
-      <div className="input-group">
-        <label>Nova Senha</label>
-        <input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="••••••" />
-      </div>
+      <div className="input-group"><label>E-mail Admin</label><input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" /></div>
+      <div className="input-group"><label>Senha Atual</label><input type="password" value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} placeholder="••••••" /></div>
+      <div className="input-group"><label>Nova Senha</label><input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="••••••" /></div>
       {msg && <div style={{ fontSize: "0.82rem", color: msg.startsWith("✓") ? "var(--green)" : "#f87171", marginBottom: "12px" }}>{msg}</div>}
-      <button className="btn-secondary" style={{ width: "auto", padding: "10px 20px", fontSize: "0.9rem" }} onClick={salvar}>
-        SALVAR ALTERAÇÕES
-      </button>
+      <button className="btn-secondary" style={{ width: "auto", padding: "10px 20px", fontSize: "0.9rem" }} onClick={salvar}>SALVAR ALTERAÇÕES</button>
     </div>
   );
 }
@@ -145,7 +124,6 @@ function Settings() {
 function Login({ onLogin, todosAlunos }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
 
@@ -153,10 +131,7 @@ function Login({ onLogin, todosAlunos }) {
     setErro("");
     setCarregando(true);
     try {
-      const alunoEncontrado = todosAlunos.find(
-        (a) => a.nome.toLowerCase() === email.toLowerCase()
-      );
-      
+      const alunoEncontrado = todosAlunos.find((a) => a.nome.toLowerCase() === email.toLowerCase());
       if (alunoEncontrado && pass === "4131") {
         onLogin({ username: alunoEncontrado.nome, role: "aluno", alunoId: alunoEncontrado.id });
         return;
@@ -175,11 +150,11 @@ function Login({ onLogin, todosAlunos }) {
       <div className="login-card">
         <div className="login-logo">OSS<span>.</span>TRACK</div>
         <div style={{ color: "var(--muted)", fontSize: "0.85rem", marginTop: "4px", marginBottom: "32px" }}>
-          {isSignUp ? "Criar Conta Admin" : "Sistema de Presença — TEAM CRUZ BJJ"}
+          Sistema de Presença — TEAM CRUZ BJJ
         </div>
         <div className="input-group">
-          <label>{isSignUp ? "E-mail de Cadastro" : "E-mail (Admin) ou Nome (Aluno)"}</label>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={isSignUp ? "seu@email.com" : "Ex: João da Silva"} onKeyDown={(e) => e.key === "Enter" && handle()} />
+          <label>E-mail (Admin) ou Nome (Aluno)</label>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Ex: João da Silva" onKeyDown={(e) => e.key === "Enter" && handle()} />
         </div>
         <div className="input-group">
           <label>Senha</label>
@@ -187,7 +162,7 @@ function Login({ onLogin, todosAlunos }) {
         </div>
         {erro && <div className="err">{erro}</div>}
         <button className="btn-primary" onClick={handle} disabled={carregando} style={{ marginTop: "8px" }}>
-          {carregando ? "AGUARDE..." : isSignUp ? "CADASTRAR" : "ENTRAR"}
+          {carregando ? "AGUARDE..." : "ENTRAR"}
         </button>
       </div>
     </div>
@@ -197,7 +172,6 @@ function Login({ onLogin, todosAlunos }) {
 // ─── ALUNO VIEW ────────────────────────────────────────────────────────────────
 function AlunoView({ aluno, turmas, carregarBanco }) {
   const [salvando, setSalvando] = useState(false);
-  
   if (!aluno) return <div className="main"><p style={{ color: "var(--muted)" }}>Carregando perfil…</p></div>;
 
   const presencas = aluno?.presencas || [];
@@ -260,13 +234,29 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
   for (let i = 0; i < firstDayOfMonth; i++) days.push({ key: `e-${i}`, presente: false, temAula: false, label: "" });
   for (let i = 1; i <= daysInMonth; i++) {
     const d = new Date(year, month, i);
-    // Para renderizar o calendário não afeta fuso
     const key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,'0') + "-" + String(d.getDate()).padStart(2,'0');
     days.push({ key, presente: presencas.some((p) => p.data === key), temAula: d.getDay() !== 0 && d.getDay() !== 6, label: String(i) });
   }
 
+  // Verifica se hoje é aniversário do aluno
+  const isAniversario = aluno.data_nascimento && (() => {
+    const [, mes, dia] = aluno.data_nascimento.split("-");
+    const now = new Date();
+    return parseInt(mes) === now.getMonth() + 1 && parseInt(dia) === now.getDate();
+  })();
+
   return (
     <div className="main">
+      {isAniversario && (
+        <div style={{ background: "rgba(217,119,6,0.12)", border: "1px solid var(--gold)", borderRadius: "12px", padding: "14px 18px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <span style={{ fontSize: "1.8rem" }}>🎂</span>
+          <div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.1rem", color: "var(--gold)", letterSpacing: "1px" }}>FELIZ ANIVERSÁRIO, {aluno.nome.split(" ")[0].toUpperCase()}!</div>
+            <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Toda a equipe Team Cruz BJJ deseja um ótimo dia! Oss! 🤜🤛</div>
+          </div>
+        </div>
+      )}
+
       <div className="aluno-hero">
         <div className="aluno-avatar">{aluno.foto}</div>
         <div>
@@ -275,6 +265,11 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
             Faixa <span style={{ color: FAIXA_COLORS[aluno.faixa] || "#ccc" }}>{aluno.faixa}</span> ({aluno.graus || 0} Graus)
             &nbsp;·&nbsp;{turmaAluno?.nome || "Sem turma"}
           </div>
+          {aluno.data_nascimento && (
+            <div style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: "4px" }}>
+              🎂 {new Date(aluno.data_nascimento + "T12:00:00").toLocaleDateString("pt-BR", { day: "numeric", month: "long" })}
+            </div>
+          )}
         </div>
         <div style={{ marginLeft: "auto", textAlign: "center" }}>
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "2.2rem", color: freq.pct >= 75 ? "var(--green)" : "var(--red)" }}>{freq.pct}%</div>
@@ -297,43 +292,45 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
 
         <div className="card">
           <div className="section-title">Mês de {date.toLocaleDateString("pt-BR", { month: "long" })}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px", marginBottom: "6px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px", marginBottom: "6px", maxWidth: "300px", margin: "0 auto 6px" }}>
             {["D","S","T","Q","Q","S","S"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: "0.6rem", color: "var(--muted)", padding: "4px 0" }}>{d}</div>)}
           </div>
           <div className="hist-grid">
             {days.map((d) => <div key={d.key} className={`hist-day ${d.presente ? "presente" : d.temAula ? "falta" : ""}`} title={d.key}>{d.label}</div>)}
           </div>
-          <div className="hist-legend" style={{ marginTop: "12px" }}>
+          <div className="hist-legend">
             <span><div className="dot" style={{ background: "#14532d" }} />Presente</span>
             <span><div className="dot" style={{ background: "#1e1e1e" }} />Falta</span>
           </div>
-          <div style={{ marginTop: "16px", display: "flex", gap: "24px" }}>
-            <div><div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.8rem", color: "var(--green)" }}>{freq.presentes}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>presenças</div></div>
-            <div><div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.8rem", color: "var(--red)" }}>{freq.total - freq.presentes}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>faltas</div></div>
-            <div><div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.8rem", color: "var(--gold)" }}>{freq.total}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>total</div></div>
+          <div style={{ marginTop: "16px", display: "flex", gap: "24px", justifyContent: "center" }}>
+            <div style={{ textAlign: "center" }}><div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.8rem", color: "var(--green)" }}>{freq.presentes}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>presenças</div></div>
+            <div style={{ textAlign: "center" }}><div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.8rem", color: "var(--red)" }}>{freq.total - freq.presentes}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>faltas</div></div>
+            <div style={{ textAlign: "center" }}><div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.8rem", color: "var(--gold)" }}>{freq.total}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>total</div></div>
           </div>
         </div>
       </div>
 
       <div className="card" style={{ marginTop: "20px" }}>
         <div className="section-title">Histórico Recente</div>
-        {presencas.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhuma presença registrada ainda.</p> : (
-          <div className="table-wrap scroll-list">
-            <table>
-              <thead><tr><th>Data</th><th>Turma</th><th>Hora</th><th>Status</th></tr></thead>
-              <tbody>
-                {[...presencas].reverse().slice(0, 15).map((p) => (
-                  <tr key={p.id}>
-                    <td>{new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")}</td>
-                    <td>{turmas.find((t) => t.id === p.turma_id)?.nome || "—"}</td>
-                    <td>{p.hora?.substring(0, 5)}</td>
-                    <td><span className="badge badge-presente">Presente</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {presencas.length === 0
+          ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhuma presença registrada ainda.</p>
+          : (
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Data</th><th>Turma</th><th>Hora</th><th>Status</th></tr></thead>
+                <tbody>
+                  {[...presencas].reverse().slice(0, 8).map((p) => (
+                    <tr key={p.id}>
+                      <td>{new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")}</td>
+                      <td>{turmas.find((t) => t.id === p.turma_id)?.nome || "—"}</td>
+                      <td>{p.hora?.substring(0, 5)}</td>
+                      <td><span className="badge badge-presente">Presente</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
       </div>
     </div>
   );
@@ -345,7 +342,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
   const [filtroTurma, setFiltroTurma] = useState("Todas");
   const [detalhe, setDetalhe] = useState(null);
   const [modalAlunoOpen, setModalAlunoOpen] = useState(false);
-  const [formAluno, setFormAluno] = useState({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: "" });
+  const [formAluno, setFormAluno] = useState({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: "", data_nascimento: "" });
   const [modalTurmaOpen, setModalTurmaOpen] = useState(false);
   const [formTurma, setFormTurma] = useState({ id: null, nome: "", horario: "", dias: "" });
   const [salvando, setSalvando] = useState(false);
@@ -383,13 +380,17 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
   const faltasHoje = alunos.length - presencasHoje.length;
   const freqMedia = alunos.length ? Math.round(alunos.reduce((s, a) => s + calcFreq(a, turmas).pct, 0) / alunos.length) : 0;
   const alunosFiltrados = filtroTurma === "Todas" ? alunos : alunos.filter((a) => turmas.find((t) => t.id === a.turma_id)?.nome === filtroTurma);
+  const aniversariantes = getAniversariantesMes(alunos);
 
   const abrirModalAlunoNovo = () => {
     if (turmas.length === 0) return alert("Cadastre uma turma nesta unidade primeiro!");
-    setFormAluno({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: turmas[0]?.id || "" }); 
-    setModalAlunoOpen(true); 
+    setFormAluno({ id: null, nome: "", faixa: "Branca", graus: "0", turma_id: turmas[0]?.id || "", data_nascimento: "" });
+    setModalAlunoOpen(true);
   };
-  const abrirModalAlunoEditar = (a) => { setFormAluno({ id: a.id, nome: a.nome, faixa: a.faixa, graus: String(a.graus || 0), turma_id: a.turma_id }); setModalAlunoOpen(true); };
+  const abrirModalAlunoEditar = (a) => {
+    setFormAluno({ id: a.id, nome: a.nome, faixa: a.faixa, graus: String(a.graus || 0), turma_id: a.turma_id, data_nascimento: a.data_nascimento || "" });
+    setModalAlunoOpen(true);
+  };
 
   const excluirAluno = async (id) => {
     if (!window.confirm("Excluir aluno? Todas as presenças serão apagadas.")) return;
@@ -402,15 +403,20 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
     if (!formAluno.nome || !formAluno.turma_id) return alert("Preencha nome e turma!");
     setSalvando(true);
     try {
-      const payload = { 
-        nome: formAluno.nome, 
-        faixa: formAluno.faixa, 
-        graus: parseInt(formAluno.graus), 
+      const payload = {
+        nome: formAluno.nome,
+        faixa: formAluno.faixa,
+        graus: parseInt(formAluno.graus),
         turma_id: formAluno.turma_id,
-        academia_id: academiaAtual?.id
+        academia_id: academiaAtual?.id,
+        data_nascimento: formAluno.data_nascimento || null,
       };
-      if (formAluno.id) { await db.patch("alunos", formAluno.id, payload); if (detalhe?.id === formAluno.id) setDetalhe({ ...detalhe, ...payload }); }
-      else await db.post("alunos", payload);
+      if (formAluno.id) {
+        await db.patch("alunos", formAluno.id, payload);
+        if (detalhe?.id === formAluno.id) setDetalhe({ ...detalhe, ...payload });
+      } else {
+        await db.post("alunos", payload);
+      }
       await carregarBanco(); setModalAlunoOpen(false);
     } catch (err) { alert("Erro: " + err.message); } finally { setSalvando(false); }
   };
@@ -422,19 +428,20 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
     e.preventDefault();
     if (!formTurma.nome || !formTurma.horario) return alert("Nome e horário obrigatórios!");
     setSalvando(true);
-    try { 
+    try {
       if (formTurma.id) {
-        await db.patch("turmas", formTurma.id, { nome: formTurma.nome, horario: formTurma.horario, dias: formTurma.dias }); 
+        await db.patch("turmas", formTurma.id, { nome: formTurma.nome, horario: formTurma.horario, dias: formTurma.dias });
       } else {
         await db.post("turmas", { nome: formTurma.nome, horario: formTurma.horario, dias: formTurma.dias, academia_id: academiaAtual?.id });
       }
-      await carregarBanco(); setModalTurmaOpen(false); 
-    }
-    catch (err) { alert("Erro: " + err.message); } finally { setSalvando(false); }
+      await carregarBanco(); setModalTurmaOpen(false);
+    } catch (err) { alert("Erro: " + err.message); } finally { setSalvando(false); }
   };
 
   return (
     <div className="main">
+
+      {/* MODAL SAIR */}
       {showExitModal && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ textAlign: "center" }}>
@@ -448,24 +455,55 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </div>
       )}
 
+      {/* MODAL ALUNO */}
       {modalAlunoOpen && (
         <div className="modal-overlay">
           <div className="modal-box">
             <button className="btn-close" onClick={() => setModalAlunoOpen(false)}>✕</button>
             <div className="modal-title">{formAluno.id ? "EDITAR ALUNO" : "NOVO ALUNO"}</div>
             <form onSubmit={salvarAluno}>
-              <div className="input-group"><label>Nome Completo</label><input autoFocus value={formAluno.nome} onChange={(e) => setFormAluno({ ...formAluno, nome: e.target.value })} placeholder="Ex: João da Silva" /></div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div className="input-group"><label>Faixa</label><select value={formAluno.faixa} onChange={(e) => setFormAluno({ ...formAluno, faixa: e.target.value })}>{Object.keys(FAIXA_COLORS).map((f) => <option key={f}>{f}</option>)}</select></div>
-                <div className="input-group"><label>Graus</label><select value={formAluno.graus} onChange={(e) => setFormAluno({ ...formAluno, graus: e.target.value })}>{[0,1,2,3,4].map((g) => <option key={g} value={g}>{g} {g === 1 ? "Grau" : "Graus"}</option>)}</select></div>
+              <div className="input-group">
+                <label>Nome Completo</label>
+                <input autoFocus value={formAluno.nome} onChange={(e) => setFormAluno({ ...formAluno, nome: e.target.value })} placeholder="Ex: João da Silva" />
               </div>
-              <div className="input-group"><label>Turma</label><select value={formAluno.turma_id} onChange={(e) => setFormAluno({ ...formAluno, turma_id: e.target.value })}>{turmas.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}</select></div>
-              <button type="submit" className="btn-primary" style={{ marginTop: "16px" }} disabled={salvando}>{salvando ? "SALVANDO..." : formAluno.id ? "SALVAR" : "CADASTRAR"}</button>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div className="input-group">
+                  <label>Faixa</label>
+                  <select value={formAluno.faixa} onChange={(e) => setFormAluno({ ...formAluno, faixa: e.target.value })}>
+                    {Object.keys(FAIXA_COLORS).map((f) => <option key={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Graus</label>
+                  <select value={formAluno.graus} onChange={(e) => setFormAluno({ ...formAluno, graus: e.target.value })}>
+                    {[0,1,2,3,4].map((g) => <option key={g} value={g}>{g} {g === 1 ? "Grau" : "Graus"}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="input-group">
+                <label>Turma</label>
+                <select value={formAluno.turma_id} onChange={(e) => setFormAluno({ ...formAluno, turma_id: e.target.value })}>
+                  {turmas.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Data de Nascimento 🎂</label>
+                <input
+                  type="date"
+                  value={formAluno.data_nascimento}
+                  onChange={(e) => setFormAluno({ ...formAluno, data_nascimento: e.target.value })}
+                  style={{ colorScheme: "dark" }}
+                />
+              </div>
+              <button type="submit" className="btn-primary" style={{ marginTop: "16px" }} disabled={salvando}>
+                {salvando ? "SALVANDO..." : formAluno.id ? "SALVAR" : "CADASTRAR"}
+              </button>
             </form>
           </div>
         </div>
       )}
 
+      {/* MODAL TURMA */}
       {modalTurmaOpen && (
         <div className="modal-overlay">
           <div className="modal-box">
@@ -481,6 +519,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </div>
       )}
 
+      {/* DETAIL PANEL */}
       {detalhe && (
         <>
           <div className="modal-overlay" onClick={() => setDetalhe(null)} style={{ background: "rgba(0,0,0,0.5)", zIndex: 199 }} />
@@ -494,7 +533,14 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
                 <div className="avatar" style={{ background: "var(--red)", width: 50, height: 50, fontSize: "1rem" }}>{detalhe.foto}</div>
                 <div>
                   <div style={{ fontWeight: 600 }}>{detalhe.nome}</div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Faixa <span style={{ color: FAIXA_COLORS[detalhe.faixa] }}>{detalhe.faixa}</span> • {detalhe.graus || 0} Graus</div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                    Faixa <span style={{ color: FAIXA_COLORS[detalhe.faixa] }}>{detalhe.faixa}</span> · {detalhe.graus || 0} Graus
+                  </div>
+                  {detalhe.data_nascimento && (
+                    <div style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: "2px" }}>
+                      🎂 {new Date(detalhe.data_nascimento + "T12:00:00").toLocaleDateString("pt-BR", { day: "numeric", month: "long" })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -539,11 +585,13 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
             <div className="card stat-card"><div className="stat-label">Faltas Hoje</div><div className="stat-value red">{faltasHoje}</div><div className="stat-sub">Ausentes</div></div>
             <div className="card stat-card"><div className="stat-label">Freq. Média</div><div className="stat-value gold">{freqMedia}%</div><div className="stat-sub">Geral da Academia</div></div>
           </div>
+
           <div className="grid-2">
             <div className="card">
               <div className="section-title">Frequência da Academia</div>
               <div className="scroll-list">
-                {alunos.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhum aluno cadastrado ainda.</p>
+                {alunos.length === 0
+                  ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhum aluno cadastrado ainda.</p>
                   : alunos.map((a) => { const f = calcFreq(a, turmas); return (
                     <div key={a.id} style={{ marginBottom: "14px", cursor: "pointer" }} onClick={() => setDetalhe(a)}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px", fontSize: "0.83rem" }}>
@@ -570,6 +618,68 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
               </div>
             </div>
           </div>
+
+          {/* PAINEL DE ANIVERSARIANTES */}
+          {aniversariantes.length > 0 && (() => {
+            const mesNome = new Date().toLocaleDateString("pt-BR", { month: "long" });
+            return (
+              <div className="card" style={{ marginTop: "20px", borderColor: "var(--gold)", position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", right: -10, top: "50%", transform: "translateY(-50%)", fontSize: "8rem", opacity: 0.04, pointerEvents: "none" }}>🎂</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
+                  <div className="section-title" style={{ color: "var(--gold)", margin: 0 }}>
+                    🎂 Aniversariantes de {mesNome.charAt(0).toUpperCase() + mesNome.slice(1)}
+                  </div>
+                  <span style={{ background: "#451a00", color: "var(--gold)", padding: "3px 12px", borderRadius: "20px", fontSize: "0.75rem", fontWeight: 600 }}>
+                    {aniversariantes.length} aluno{aniversariantes.length > 1 ? "s" : ""}
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {aniversariantes.map((a) => (
+                    <div key={a.id} style={{
+                      display: "flex", alignItems: "center", gap: "12px", padding: "12px",
+                      borderRadius: "8px", flexWrap: "wrap",
+                      background: a.isHoje ? "rgba(217,119,6,0.12)" : "var(--surface2)",
+                      border: `1px solid ${a.isHoje ? "var(--gold)" : "var(--border)"}`,
+                    }}>
+                      <div style={{
+                        width: 42, height: 42, borderRadius: "50%", flexShrink: 0,
+                        background: a.isHoje ? "var(--gold)" : "var(--surface)",
+                        border: `2px solid ${a.isHoje ? "var(--gold)" : "var(--border)"}`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: a.isHoje ? "1.2rem" : "0.75rem", fontWeight: 600,
+                        color: a.isHoje ? "#0a0a0a" : "var(--text)",
+                      }}>
+                        {a.isHoje ? "🎂" : a.foto}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                          {a.nome}
+                          {a.isHoje && (
+                            <span style={{ background: "var(--gold)", color: "#0a0a0a", fontSize: "0.65rem", padding: "2px 8px", borderRadius: "10px", fontWeight: 700 }}>
+                              HOJE! 🎉
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: "2px" }}>
+                          Dia {a.diaAniversario} · {turmas.find(t => t.id === a.turma_id)?.nome} · Faixa <span style={{ color: FAIXA_COLORS[a.faixa] }}>{a.faixa}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => enviarParabensWhatsApp(a, academiaAtual?.nome || "Team Cruz BJJ")}
+                        style={{
+                          background: "#16a34a", border: "none", color: "white", borderRadius: "8px",
+                          padding: "8px 14px", cursor: "pointer", fontSize: "0.78rem", fontWeight: 600,
+                          display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap", flexShrink: 0,
+                        }}
+                      >
+                        💬 Parabéns
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
 
@@ -595,7 +705,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
           <div className="card">
             <div className="section-title" style={{ color: "var(--red)" }}>✗ Ausentes ({faltasHoje})</div>
             <div className="scroll-list">
-              {faltasHoje === 0 && alunos.length > 0 && <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Todos estão presentes! 🎉</p>}
+              {faltasHoje === 0 && alunos.length > 0 && <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Todos presentes! 🎉</p>}
               {alunos.filter((a) => !a.presencas?.some((p) => p.data === TODAY)).map((a) => (
                 <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
                   <div className="avatar" style={{ background: "#450a0a", color: "#f87171" }}>{a.foto}</div>
@@ -648,15 +758,20 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
           {alunosFiltrados.length === 0
             ? <p style={{ color: "var(--muted)" }}>Nenhum aluno nesta turma.</p>
             : (
-              <div className="table-wrap scroll-list" style={{ paddingRight: 0 }}>
+              <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Aluno</th><th>Faixa e Grau</th><th>Turma</th><th>Ações</th></tr></thead>
+                  <thead><tr><th>Aluno</th><th>Faixa</th><th>Turma</th><th>Aniversário</th><th>Ações</th></tr></thead>
                   <tbody>
                     {alunosFiltrados.map((a) => (
                       <tr key={a.id}>
                         <td><div style={{ display: "flex", alignItems: "center", gap: "10px" }}><div className="avatar">{a.foto}</div>{a.nome}</div></td>
-                        <td><span style={{ display: "flex", alignItems: "center", gap: "7px" }}><span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />{a.faixa} ({a.graus || 0} graus)</span></td>
+                        <td><span style={{ display: "flex", alignItems: "center", gap: "7px" }}><span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />{a.faixa} ({a.graus || 0}g)</span></td>
                         <td style={{ color: "var(--muted)" }}>{turmas.find((t) => t.id === a.turma_id)?.nome}</td>
+                        <td style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                          {a.data_nascimento
+                            ? new Date(a.data_nascimento + "T12:00:00").toLocaleDateString("pt-BR", { day: "numeric", month: "short" })
+                            : "—"}
+                        </td>
                         <td><button className="filter-btn" onClick={() => setDetalhe(a)}>Ver Perfil</button></td>
                       </tr>
                     ))}
@@ -703,7 +818,7 @@ export default function App() {
   const [session, setSession] = useState(() => store.get("osstrack_session"));
   const [academias, setAcademias] = useState([]);
   const [academiaAtual, setAcademiaAtual] = useState(() => store.get("osstrack_admin_academia") || null);
-  const [todosAlunos, setTodosAlunos] = useState([]); 
+  const [todosAlunos, setTodosAlunos] = useState([]);
   const [turmas, setTurmas] = useState([]);
   const [alunos, setAlunos] = useState([]);
   const [dbStatus, setDbStatus] = useState("loading");
@@ -715,27 +830,21 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    if (academiaAtual && session?.role === "admin") {
-      store.set("osstrack_admin_academia", academiaAtual);
-    }
+    if (academiaAtual && session?.role === "admin") store.set("osstrack_admin_academia", academiaAtual);
   }, [academiaAtual, session]);
 
   const carregarBanco = async (idForcado = null) => {
     try {
       setDbStatus("loading");
-      
+
       const academiasData = await db.get("academias", "?order=nome");
       if (Array.isArray(academiasData)) setAcademias(academiasData);
 
       const todosOsAlunosData = await db.get("alunos", "?select=*,presencas(*)&order=nome");
       let listaGlobal = [];
       if (Array.isArray(todosOsAlunosData)) {
-         listaGlobal = todosOsAlunosData.map(a => ({
-             ...a,
-             foto: getIniciais(a.nome),
-             presencas: a.presencas || []
-         }));
-         setTodosAlunos(listaGlobal); 
+        listaGlobal = todosOsAlunosData.map(a => ({ ...a, foto: getIniciais(a.nome), presencas: a.presencas || [] }));
+        setTodosAlunos(listaGlobal);
       }
 
       let idAtivo = idForcado;
@@ -745,7 +854,7 @@ export default function App() {
           if (meuPerfil) idAtivo = meuPerfil.academia_id;
         } else {
           const memoriaAdmin = store.get("osstrack_admin_academia");
-          idAtivo = memoriaAdmin?.id || (academiasData && academiasData.length > 0 ? academiasData[0].id : null);
+          idAtivo = memoriaAdmin?.id || (Array.isArray(academiasData) && academiasData.length > 0 ? academiasData[0].id : null);
         }
       }
 
@@ -754,20 +863,13 @@ export default function App() {
         if (novaAtual) setAcademiaAtual(novaAtual);
       }
 
-      if (!idAtivo) {
-         setTurmas([]);
-         setAlunos([]);
-         setDbStatus("ok");
-         return;
-      }
+      if (!idAtivo) { setTurmas([]); setAlunos([]); setDbStatus("ok"); return; }
 
       const turmasData = await db.get("turmas", `?academia_id=eq.${idAtivo}&order=created_at`);
       if (!Array.isArray(turmasData)) throw new Error(turmasData?.message || "Erro nas turmas");
       setTurmas(turmasData);
 
-      const alunosDaAcademia = listaGlobal.filter(a => a.academia_id === idAtivo);
-      setAlunos(alunosDaAcademia); 
-      
+      setAlunos(listaGlobal.filter(a => a.academia_id === idAtivo));
       setDbStatus("ok");
     } catch (e) {
       setDbErro(e.message);
@@ -780,40 +882,38 @@ export default function App() {
   const alunoLogado = session?.role === "aluno" ? todosAlunos.find((a) => a.id === session.alunoId) : null;
 
   return (
-    <>
-      <div className="app">
-        <DbStatusBar status={dbStatus} turmasCount={turmas.length} erro={dbErro} />
-        {!session ? (
-          <Login onLogin={setSession} todosAlunos={todosAlunos} />
-        ) : (
-          <>
-            <nav className="topnav">
-              <div className="nav-logo">OSS<span>.</span>TRACK</div>
-              <div className="nav-right">
-                {session.role === "admin" && academias.length > 0 && (
-                  <select 
-                    className="academy-select"
-                    value={academiaAtual?.id || ""} 
-                    onChange={(e) => {
-                      const nova = academias.find(a => a.id === e.target.value);
-                      setAcademiaAtual(nova);
-                      carregarBanco(nova.id); 
-                    }}
-                  >
-                    {academias.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
-                  </select>
-                )}
-                <span className="nav-user">{session.username} · {session.role === "admin" ? "Admin" : "Aluno"}</span>
-                <button className="btn-logout" onClick={() => setSession(null)}>Sair</button>
-              </div>
-            </nav>
-            {session.role === "admin"
-              ? <AdminView turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} academiaAtual={academiaAtual} />
-              : <AlunoView aluno={alunoLogado} turmas={turmas} carregarBanco={carregarBanco} />
-            }
-          </>
-        )}
-      </div>
-    </>
+    <div className="app">
+      <DbStatusBar status={dbStatus} turmasCount={turmas.length} erro={dbErro} />
+      {!session ? (
+        <Login onLogin={setSession} todosAlunos={todosAlunos} />
+      ) : (
+        <>
+          <nav className="topnav">
+            <div className="nav-logo">OSS<span>.</span>TRACK</div>
+            <div className="nav-right">
+              {session.role === "admin" && academias.length > 0 && (
+                <select
+                  className="academy-select"
+                  value={academiaAtual?.id || ""}
+                  onChange={(e) => {
+                    const nova = academias.find(a => a.id === e.target.value);
+                    setAcademiaAtual(nova);
+                    carregarBanco(nova.id);
+                  }}
+                >
+                  {academias.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                </select>
+              )}
+              <span className="nav-user">{session.username} · {session.role === "admin" ? "Admin" : "Aluno"}</span>
+              <button className="btn-logout" onClick={() => setSession(null)}>Sair</button>
+            </div>
+          </nav>
+          {session.role === "admin"
+            ? <AdminView turmas={turmas} alunos={alunos} carregarBanco={carregarBanco} academiaAtual={academiaAtual} />
+            : <AlunoView aluno={alunoLogado} turmas={turmas} carregarBanco={carregarBanco} />
+          }
+        </>
+      )}
+    </div>
   );
 }
