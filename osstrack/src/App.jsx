@@ -15,6 +15,12 @@ const FAIXA_COLORS = {
   Verde: "#22c55e", Azul: "#3b82f6", Roxa: "#8b5cf6", Marrom: "#92400e", Preta: "#1a1a1a",
 };
 
+const PLANOS = [
+  { nome: "Adulto",  valor: 150.00 },
+  { nome: "Kids",    valor: 120.00  },
+  { nome: "Família", valor: 250.00 },
+];
+
 const getToday = () => {
   const d = new Date();
   return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,'0') + "-" + String(d.getDate()).padStart(2,'0');
@@ -69,21 +75,35 @@ const getAniversariantesMes = (alunos) => {
 };
 
 // ─── MOTORES DE WHATSAPP ──────────────────────────────────────────────────────
+// Formata telefone para link direto do WhatsApp (remove não-dígitos, adiciona 55 se BR)
+const formatarTelefoneWA = (tel) => {
+  if (!tel) return "";
+  const digits = tel.replace(/\D/g, "");
+  if (digits.startsWith("55")) return digits;
+  return "55" + digits;
+};
+
 const enviarParabensWhatsApp = (aluno, nomeAcademia) => {
   const msg = `🥋 *Ossss, ${aluno.nome.split(" ")[0]}!* 🎂\n\nA equipa *${nomeAcademia}* deseja-lhe um feliz aniversário! 🎉\n\nQue este novo ciclo traga muito treino, evolução e saúde!\n\n*Oss!* 🤜🤛`;
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  const tel = formatarTelefoneWA(aluno.telefone);
+  const url = tel ? `https://wa.me/${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(url, "_blank");
 };
 
 const enviarCobrancaWhatsApp = (aluno, mensalidade, nomeAcademia) => {
   if (!aluno) return;
   const dataVenc = new Date(mensalidade.data_vencimento + "T12:00:00").toLocaleDateString("pt-BR");
   const msg = `🥋 *Ossss, ${aluno.nome.split(" ")[0]}!*\n\nAqui é da equipa *${nomeAcademia}*.\n\nNotámos que a sua mensalidade referente a *${mensalidade.mes_referencia}* (vencimento a ${dataVenc}) consta como pendente no nosso sistema.\n\nPara não interromper os seus treinos, por favor, realize o pagamento assim que possível. Caso já tenha pago, pedimos que desconsidere esta mensagem!\n\n*Oss!* 🤜🤛`;
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  const tel = formatarTelefoneWA(aluno.telefone);
+  const url = tel ? `https://wa.me/${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(url, "_blank");
 };
 
 const enviarFaltaWhatsApp = (aluno, faltas, nomeAcademia) => {
   const msg = `🥋 *Ossss, ${aluno.nome.split(" ")[0]}!*\n\nAqui é da equipa *${nomeAcademia}*.\n\nSentimos a sua falta nos tatames! Você já acumula *${faltas} faltas* recentes.\n\nLembre-se que a constância é o segredo da evolução no Jiu-Jitsu. Esperamos por si no próximo treino!\n\n*Oss!* 🤜🤛`;
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  const tel = formatarTelefoneWA(aluno.telefone);
+  const url = tel ? `https://wa.me/${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(url, "_blank");
 };
 
 // ─── CLOCK HOOK ───────────────────────────────────────────────────────────────
@@ -483,7 +503,7 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
   const [filtroTurma, setFiltroTurma] = useState("Todas");
   const [detalhe, setDetalhe] = useState(null);
   const [modalAlunoOpen, setModalAlunoOpen] = useState(false);
-  const [formAluno, setFormAluno] = useState({ id:null, nome:"", faixa:"Branca", graus:"0", turma_id:"", data_nascimento:"" });
+  const [formAluno, setFormAluno] = useState({ id:null, nome:"", faixa:"Branca", graus:"0", turma_id:"", data_nascimento:"", telefone:"", plano:"Adulto", valor_mensalidade:"100.00" });
   const [modalTurmaOpen, setModalTurmaOpen] = useState(false);
   const [formTurma, setFormTurma] = useState({ id:null, nome:"", horario:"", dias:"" });
   const [salvando, setSalvando] = useState(false);
@@ -527,11 +547,11 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
 
   const abrirModalAlunoNovo = () => {
     if (!turmas.length) return alert("Registe uma turma primeiro!");
-    setFormAluno({ id:null, nome:"", faixa:"Branca", graus:"0", turma_id:turmas[0]?.id||"", data_nascimento:"" });
+    setFormAluno({ id:null, nome:"", faixa:"Branca", graus:"0", turma_id:turmas[0]?.id||"", data_nascimento:"", telefone:"", plano:"Adulto", valor_mensalidade:"100.00" });
     setModalAlunoOpen(true);
   };
   const abrirModalAlunoEditar = (a) => {
-    setFormAluno({ id:a.id, nome:a.nome, faixa:a.faixa, graus:String(a.graus||0), turma_id:a.turma_id, data_nascimento:a.data_nascimento||"" });
+    setFormAluno({ id:a.id, nome:a.nome, faixa:a.faixa, graus:String(a.graus||0), turma_id:a.turma_id, data_nascimento:a.data_nascimento||"", telefone:a.telefone||"", plano:a.plano||"Adulto", valor_mensalidade:String(a.valor_mensalidade||"100.00") });
     setModalAlunoOpen(true);
   };
   const excluirAluno = async (id) => {
@@ -549,7 +569,10 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
         graus:parseInt(formAluno.graus), 
         turma_id:formAluno.turma_id, 
         academia_id:academiaAtual?.id, 
-        data_nascimento:formAluno.data_nascimento||null 
+        data_nascimento:formAluno.data_nascimento||null,
+        telefone:formAluno.telefone||null,
+        plano:formAluno.plano||"Adulto",
+        valor_mensalidade:parseFloat(formAluno.valor_mensalidade)||100.00,
       };
       if (formAluno.id) { await db.patch("alunos",formAluno.id,payload); if(detalhe?.id===formAluno.id) setDetalhe({...detalhe,...payload}); }
       else await db.post("alunos",payload);
@@ -593,7 +616,7 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
         await db.post("mensalidades", {
           aluno_id: aluno.id,
           academia_id: academiaAtual.id,
-          valor: 100.00,
+          valor: aluno.valor_mensalidade || 100.00,
           data_vencimento: `${filtroMesFin}-10`,
           mes_referencia: filtroMesFin,
           status: 'Pendente'
@@ -649,6 +672,22 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
               </div>
               <div className="input-group"><label>Turma</label><select value={formAluno.turma_id} onChange={e=>setFormAluno({...formAluno,turma_id:e.target.value})}>{turmas.map(t=><option key={t.id} value={t.id}>{t.nome}</option>)}</select></div>
               <div className="input-group"><label>Data de Nascimento 🎂</label><input type="date" value={formAluno.data_nascimento} onChange={e=>setFormAluno({...formAluno,data_nascimento:e.target.value})} style={{colorScheme:"dark"}}/></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"}}>
+                <div className="input-group">
+                  <label>Plano 💰</label>
+                  <select value={formAluno.plano} onChange={e=>{
+                    const p = PLANOS.find(x=>x.nome===e.target.value);
+                    setFormAluno({...formAluno, plano:e.target.value, valor_mensalidade:String(p?.valor||100)});
+                  }}>
+                    {PLANOS.map(p=><option key={p.nome} value={p.nome}>{p.nome} — R$ {p.valor.toFixed(2).replace(".",",")}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Valor (R$)</label>
+                  <input type="number" step="0.01" min="0" value={formAluno.valor_mensalidade} onChange={e=>setFormAluno({...formAluno,valor_mensalidade:e.target.value})} placeholder="100.00"/>
+                </div>
+              </div>
+              <div className="input-group"><label>WhatsApp 📱</label><input type="tel" value={formAluno.telefone} onChange={e=>setFormAluno({...formAluno,telefone:e.target.value})} placeholder="(38) 99999-9999"/></div>
               <button type="submit" className="btn-primary" style={{marginTop:"16px"}} disabled={salvando}>{salvando?"A GUARDAR...":formAluno.id?"SALVAR":"REGISTAR"}</button>
             </form>
           </div>
@@ -688,6 +727,22 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
                   <div style={{fontSize:"0.8rem",color:"var(--muted)"}}>Faixa <span style={{color:FAIXA_COLORS[detalhe.faixa]}}>{detalhe.faixa}</span> · {detalhe.graus||0} Graus</div>
                   {detalhe.data_nascimento && <div style={{fontSize:"0.75rem",color:"var(--muted)",marginTop:"2px"}}>🎂 {new Date(detalhe.data_nascimento+"T12:00:00").toLocaleDateString("pt-BR",{day:"numeric",month:"long"})}</div>}
                   {detalhe.created_at && <div style={{fontSize:"0.72rem",color:"var(--muted)",marginTop:"2px"}}>📅 Aluno desde {new Date(detalhe.created_at).toLocaleDateString("pt-BR",{day:"numeric",month:"short",year:"numeric"})}</div>}
+                  {detalhe.plano && (
+                    <div style={{fontSize:"0.75rem",marginTop:"6px",display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                      <span style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"6px",padding:"2px 8px",color:"var(--gold)"}}>
+                        💰 {detalhe.plano}
+                      </span>
+                      <span style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"6px",padding:"2px 8px",color:"var(--green)"}}>
+                        R$ {Number(detalhe.valor_mensalidade||100).toFixed(2).replace(".",",")}
+                      </span>
+                      {detalhe.telefone && (
+                        <a href={`https://wa.me/${formatarTelefoneWA(detalhe.telefone)}`} target="_blank" rel="noreferrer"
+                          style={{background:"#14532d",border:"1px solid #16a34a",borderRadius:"6px",padding:"2px 8px",color:"#4ade80",textDecoration:"none",fontSize:"0.75rem"}}>
+                          📱 {detalhe.telefone}
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -872,13 +927,19 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
           {alunosFiltrados.length===0 ? <p style={{color:"var(--muted)"}}>Nenhum aluno.</p> : (
             <div className="table-wrap scroll-list" style={{ maxHeight: "400px" }}>
               <table>
-              <thead><tr><th>Aluno</th><th>Faixa</th><th>Turma</th><th>Aniversário</th><th></th></tr></thead>
+              <thead><tr><th>Aluno</th><th>Faixa</th><th>Turma</th><th>Plano</th><th>Aniversário</th><th></th></tr></thead>
               <tbody>
                 {alunosFiltrados.map(a=>(
                   <tr key={a.id}>
                     <td><div style={{display:"flex",alignItems:"center",gap:"10px"}}><div className="avatar">{a.foto}</div>{a.nome}</div></td>
                     <td><span style={{display:"flex",alignItems:"center",gap:"7px"}}><span className="badge-faixa" style={{background:FAIXA_COLORS[a.faixa]}}/>{a.faixa} ({a.graus||0}g)</span></td>
                     <td style={{color:"var(--muted)"}}>{turmas.find(t=>t.id===a.turma_id)?.nome}</td>
+                    <td>
+                      <span style={{fontSize:"0.78rem"}}>
+                        <span style={{color:"var(--gold)"}}>{a.plano||"Adulto"}</span>
+                        <span style={{color:"var(--muted)",marginLeft:"4px"}}>R$ {Number(a.valor_mensalidade||100).toFixed(2).replace(".",",")}</span>
+                      </span>
+                    </td>
                     <td style={{color:"var(--muted)",fontSize:"0.82rem"}}>{a.data_nascimento?new Date(a.data_nascimento+"T12:00:00").toLocaleDateString("pt-BR",{day:"numeric",month:"short"}):"—"}</td>
                     <td><button className="filter-btn" onClick={()=>setDetalhe(a)}>Ver Perfil</button></td>
                   </tr>
