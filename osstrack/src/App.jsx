@@ -1,68 +1,6 @@
 import { useState, useEffect } from "react";
-
-// ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
-const SB_URL = "https://yultwpihlrrgzelkyidv.supabase.co";
-const SB_KEY = "sb_publishable_IYTw-lZ4vYqIW1n-VBe7iA_b833hsHo";
-
-// ─── DB (REST API) ────────────────────────────────────────────────────────────
-const db = {
-  headers: {
-    apikey: SB_KEY,
-    Authorization: `Bearer ${SB_KEY}`,
-    "Content-Type": "application/json",
-    Prefer: "return=representation",
-  },
-  async get(table, query = "") {
-    const res = await fetch(`${SB_URL}/rest/v1/${table}${query}`, { headers: this.headers });
-    if (!res.ok) throw new Error(`GET ${table} falhou: ${res.status}`);
-    return res.json();
-  },
-  async post(table, data) {
-    const res = await fetch(`${SB_URL}/rest/v1/${table}`, {
-      method: "POST", headers: this.headers, body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error(`POST ${table} falhou: ${res.status}`);
-    return res.json();
-  },
-  async patch(table, id, data) {
-    const res = await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`, {
-      method: "PATCH", headers: this.headers, body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error(`PATCH ${table} falhou: ${res.status}`);
-    return res.json();
-  },
-  async delete(table, id) {
-    const res = await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`, {
-      method: "DELETE", headers: this.headers,
-    });
-    if (!res.ok) throw new Error(`DELETE ${table} falhou: ${res.status}`);
-    return true;
-  },
-};
-
-// ─── SUPABASE AUTH (inline, substitui o supabaseClient.js) ───────────────────
-const auth = {
-  async signUp(email, password) {
-    const res = await fetch(`${SB_URL}/auth/v1/signup`, {
-      method: "POST",
-      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.msg || data.error_description || "Erro no cadastro");
-    return data;
-  },
-  async signIn(email, password) {
-    const res = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
-      method: "POST",
-      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || data.msg || "Credenciais inválidas");
-    return data;
-  },
-};
+import './styles/global.css';
+import { db, auth } from './services/api';
 
 // ─── localStorage (com fallback seguro para ambientes sem suporte) ────────────
 const store = {
@@ -77,7 +15,7 @@ const store = {
   },
 };
 
-// ─── CONSTANTES ───────────────────────────────────────────────────────────────
+// ─── CONSTANTES E DATAS LOCAIS ────────────────────────────────────────────────
 const FAIXA_COLORS = {
   Branca: "#e5e5e5", 
   Cinza: "#9ca3af",
@@ -89,12 +27,51 @@ const FAIXA_COLORS = {
   Marrom: "#92400e", 
   Preta: "#1a1a1a",
 };
-const TODAY = new Date().toISOString().split("T")[0];
+
+// Função inteligente que pega sempre a data atual baseada no fuso do Brasil
+const getToday = () => {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0') + "-" + String(d.getDate()).padStart(2, '0');
+};
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
-const calcFreq = (aluno) => {
+
+// NOVO: Cálculo inteligente que conta só os dias de treino desde que o aluno entrou!
+const calcFreq = (aluno, turmas) => {
   const presentes = aluno.presencas?.length || 0;
-  const total = 30;
+  let total = 30; // fallback padrão
+
+  if (aluno.created_at && turmas) {
+    const turma = turmas.find(t => t.id === aluno.turma_id);
+    if (turma && turma.dias) {
+      const diasMap = { "Dom": 0, "Seg": 1, "Ter": 2, "Qua": 3, "Qui": 4, "Sex": 5, "Sáb": 6 };
+      // Pega os dias ex: "Seg / Qua / Sex" e limpa para achar o número da semana
+      const diasAtivos = turma.dias.split(/[\/,]/).map(d => d.trim().substring(0, 3));
+      const indicesAtivos = diasAtivos.map(d => diasMap[d]).filter(d => d !== undefined);
+
+      if (indicesAtivos.length > 0) {
+        let count = 0;
+        let currentDate = new Date(aluno.created_at);
+        currentDate.setHours(0, 0, 0, 0); // Zera as horas para contar só dias
+        const endDate = new Date();
+        endDate.setHours(0, 0, 0, 0);
+
+        // Caminha dia por dia do cadastro até hoje, somando só se tiver treino!
+        while (currentDate <= endDate) {
+          if (indicesAtivos.includes(currentDate.getDay())) {
+            count++;
+          }
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        total = count;
+      }
+    }
+  }
+
+  // Prevenção de bugs: o total nunca pode ser menor que presenças ou zero
+  if (total < presentes) total = presentes;
+  if (total === 0) total = 1;
+
   return { presentes, total, pct: Math.round((presentes / total) * 100) };
 };
 
@@ -112,152 +89,6 @@ const parseHorario = (horarioStr) => {
   const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(match[3]), parseInt(match[4]));
   return { start, end };
 };
-
-// ─── STYLES ───────────────────────────────────────────────────────────────────
-const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  
-  html, body { overflow-x: hidden; width: 100%; position: relative; }
-  
-  :root {
-    --bg: #0a0a0a; --surface: #141414; --surface2: #1e1e1e;
-    --border: #2a2a2a; --red: #dc2626; --red-dim: #7f1d1d;
-    --gold: #d97706; --text: #f0f0f0; --muted: #6b6b6b;
-    --green: #16a34a; --radius: 12px;
-  }
-  
-  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; }
-  .app { min-height: 100vh; display: flex; flex-direction: column; width: 100%; overflow-x: hidden; }
-
-  .main { flex: 1; padding: 16px; width: 100%; max-width: 1000px; margin: 0 auto; overflow-x: hidden; }
-  
-  .grid-2 { display: grid; grid-template-columns: 1fr; gap: 16px; width: 100%; }
-  @media (min-width: 768px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
-  .grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
-  @media (min-width: 768px) { .grid-4 { grid-template-columns: repeat(4, 1fr); } }
-  
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; width: 100%; overflow: hidden; }
-  
-  /* DB STATUS BAR */
-  .db-bar { padding: 7px 20px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
-  .db-bar.ok { background: #052e16; color: #4ade80; }
-  .db-bar.err { background: #450a0a; color: #f87171; }
-  .db-bar.loading { background: #1c1400; color: #fbbf24; }
-  .db-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-  .db-bar.ok .db-dot { animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-
-  .section-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: 2px; margin-bottom: 16px; }
-
-  /* LOGIN */
-  .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 60% 20%, #1a0000 0%, #0a0a0a 70%); padding: 24px; }
-  .login-card { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px 36px; position: relative; overflow: hidden; }
-  .login-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--red); }
-  .login-logo { font-family: 'Bebas Neue', sans-serif; font-size: 2.6rem; letter-spacing: 3px; color: var(--text); line-height: 1; }
-  .login-logo span { color: var(--red); }
-  .input-group { margin-bottom: 16px; text-align: left; }
-  .input-group label { display: block; font-size: 0.78rem; font-weight: 500; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
-  .input-group input, .input-group select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; color: var(--text); font-size: 0.95rem; font-family: inherit; transition: border-color 0.2s; }
-  .input-group input:focus, .input-group select:focus { outline: none; border-color: var(--red); }
-
-  /* BUTTONS */
-  .btn-primary { width: 100%; background: var(--red); color: white; border: none; padding: 13px; border-radius: 8px; font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 2px; cursor: pointer; transition: all 0.2s; }
-  .btn-primary:hover { opacity: 0.9; }
-  .btn-primary:active { transform: scale(0.98); }
-  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-secondary { width: 100%; background: var(--surface2); color: var(--text); border: 1px solid var(--border); padding: 13px; border-radius: 8px; font-family: 'Bebas Neue', sans-serif; font-size: 1rem; letter-spacing: 2px; cursor: pointer; transition: all 0.2s; }
-  .btn-secondary:hover { background: var(--border); }
-  .btn-danger { width: 100%; background: #450a0a; color: #f87171; border: 1px solid var(--red-dim); padding: 13px; border-radius: 8px; font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 2px; cursor: pointer; transition: all 0.2s; }
-  .btn-danger:hover { background: #7f1d1d; color: white; }
-  .err { color: #f87171; font-size: 0.82rem; margin-top: 8px; }
-
-  /* MODAL */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 299; display: flex; align-items: center; justify-content: center; padding: 20px; }
-  .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 420px; padding: 28px; position: relative; animation: slideUp 0.2s ease; max-height: 90vh; overflow-y: auto; }
-  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 2px; margin-bottom: 20px; text-align: center; }
-  .btn-close { position: absolute; top: 20px; right: 20px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; z-index: 10; }
-
-  /* TOPNAV */
-  .topnav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 56px; position: sticky; top: 0; z-index: 100; }
-  .nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; letter-spacing: 2px; }
-  .nav-logo span { color: var(--red); }
-  .nav-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .nav-user { font-size: 0.82rem; color: var(--muted); display: none; }
-  @media (min-width: 480px) { .nav-user { display: inline-block; } }
-  .btn-logout { background: var(--border); border: none; color: var(--muted); font-family: inherit; font-size: 0.78rem; padding: 5px 10px; border-radius: 6px; cursor: pointer; transition: all 0.15s; }
-  .btn-logout:hover { background: var(--red-dim); color: white; }
-  .academy-select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 0.8rem; font-family: inherit; outline: none; cursor: pointer; max-width: 150px; }
-  .academy-select:focus { border-color: var(--red); }
-
-  /* ADMIN HEADER & FILTERS */
-  .page-header { margin-bottom: 24px; }
-  .page-header h1 { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; letter-spacing: 3px; }
-  .page-header p { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
-  .filters { display: flex; gap: 10px; flex-wrap: wrap; }
-  .filter-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-family: inherit; font-size: 0.8rem; padding: 6px 14px; border-radius: 20px; cursor: pointer; transition: all 0.15s; }
-  .filter-btn.active { background: var(--red); border-color: var(--red); color: white; }
-
-  /* TABLE & BADGES */
-  .table-wrap { overflow-x: auto; width: 100%; max-width: 100%; }
-  table { width: 100%; min-width: 300px; border-collapse: collapse; font-size: 0.88rem; }
-  th { text-align: left; padding: 10px 14px; color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); }
-  td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: var(--surface2); }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 500; }
-  .badge-presente { background: #14532d; color: #4ade80; }
-  .badge-faixa { display: inline-block; width: 32px; height: 8px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.1); }
-  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; flex-shrink: 0; background: var(--red-dim); overflow: hidden; }
-
-  /* STAT CARDS */
-  .stat-card { display: flex; flex-direction: column; gap: 6px; }
-  .stat-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
-  .stat-value { font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; line-height: 1; }
-  .stat-value.red { color: var(--red); } .stat-value.green { color: var(--green); } .stat-value.gold { color: var(--gold); }
-  .stat-sub { font-size: 0.78rem; color: var(--muted); }
-
-  /* PROGRESS BAR */
-  .prog-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-  .prog-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
-
-  /* DETAIL PANEL */
-  .detail-panel { position: fixed; right: 0; top: 0; bottom: 0; width: 360px; max-width: 100%; background: var(--surface); border-left: 1px solid var(--border); padding: 24px; z-index: 200; overflow-y: auto; animation: slideIn 0.25s ease; display: flex; flex-direction: column; }
-  @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-  .hoje-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
-  .hoje-item:hover { background: var(--surface2); }
-  .hoje-item:last-child { border-bottom: none; }
-
-  /* ALUNO VIEW */
-  .aluno-hero { background: linear-gradient(135deg, #1a0000 0%, var(--surface) 60%); border: 1px solid var(--border); border-radius: 16px; padding: 28px; margin-bottom: 24px; display: flex; align-items: center; gap: 24px; position: relative; overflow: hidden; flex-wrap: wrap; }
-  .aluno-hero::after { content: 'BJJ'; position: absolute; right: -10px; top: 50%; transform: translateY(-50%); font-family: 'Bebas Neue', sans-serif; font-size: 7rem; color: rgba(255,255,255,0.03); letter-spacing: 4px; pointer-events: none; }
-  .aluno-avatar { width: 72px; height: 72px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 1px; flex-shrink: 0; overflow: hidden; }
-  .aluno-nome { font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; letter-spacing: 2px; }
-  .aluno-meta { font-size: 0.83rem; color: var(--muted); margin-top: 2px; }
-
-  /* CHECKIN */
-  .checkin-zone { text-align: center; padding: 32px 0; }
-  .checkin-btn { width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #3a0000, #1a0000); border: 2px solid var(--red); color: white; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; transition: all 0.25s; box-shadow: 0 0 40px rgba(220,38,38,0.2); font-family: inherit; margin: 0 auto; }
-  .checkin-btn:hover { box-shadow: 0 0 60px rgba(220,38,38,0.4); transform: scale(1.05); }
-  .checkin-btn.done { background: radial-gradient(circle at 40% 35%, #003a00, #001a00); border-color: var(--green); box-shadow: 0 0 40px rgba(22,163,74,0.2); cursor: default; }
-  .checkin-btn.done:hover { transform: scale(1); box-shadow: 0 0 40px rgba(22,163,74,0.2); }
-  .checkin-icon { font-size: 2.4rem; }
-  .checkin-text { font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 2px; }
-  .checkin-sub { font-size: 0.75rem; color: var(--muted); }
-  .aula-info { margin-top: 16px; font-size: 0.83rem; color: var(--muted); }
-  .aula-info strong { color: var(--text); }
-
-  /* HISTÓRICO - Fix para o calendário não estourar */
-  .hist-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; width: 100%; max-width: 300px; margin: 0 auto; }
-  .hist-day { aspect-ratio: 1; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: var(--muted); transition: transform 0.15s; }
-  .hist-day.presente { background: #14532d; color: #4ade80; font-weight: 600; }
-  .hist-day.falta { background: var(--surface2); }
-  .hist-day:hover { transform: scale(1.15); }
-  .hist-legend { display: flex; gap: 16px; margin-top: 12px; font-size: 0.75rem; color: var(--muted); justify-content: center; }
-  .hist-legend span { display: flex; align-items: center; gap: 6px; }
-  .dot { width: 10px; height: 10px; border-radius: 2px; }
-`;
 
 // ─── DB STATUS BAR ─────────────────────────────────────────────────────────────
 function DbStatusBar({ status, turmasCount, erro }) {
@@ -370,8 +201,9 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
   if (!aluno) return <div className="main"><p style={{ color: "var(--muted)" }}>Carregando perfil…</p></div>;
 
   const presencas = aluno?.presencas || [];
+  const TODAY = getToday();
   const checkedIn = presencas.some((p) => p.data === TODAY);
-  const freq = calcFreq({ ...aluno, presencas });
+  const freq = calcFreq({ ...aluno, presencas }, turmas);
   const turmaAluno = turmas.find((t) => t.id === aluno?.turma_id);
 
   let btnText = "CHECK-IN", btnSub = "Toque para marcar", isDisabled = false;
@@ -428,7 +260,8 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
   for (let i = 0; i < firstDayOfMonth; i++) days.push({ key: `e-${i}`, presente: false, temAula: false, label: "" });
   for (let i = 1; i <= daysInMonth; i++) {
     const d = new Date(year, month, i);
-    const key = d.toISOString().split("T")[0];
+    // Para renderizar o calendário não afeta fuso
+    const key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,'0') + "-" + String(d.getDate()).padStart(2,'0');
     days.push({ key, presente: presencas.some((p) => p.data === key), temAula: d.getDay() !== 0 && d.getDay() !== 6, label: String(i) });
   }
 
@@ -485,11 +318,11 @@ function AlunoView({ aluno, turmas, carregarBanco }) {
       <div className="card" style={{ marginTop: "20px" }}>
         <div className="section-title">Histórico Recente</div>
         {presencas.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhuma presença registrada ainda.</p> : (
-          <div className="table-wrap">
+          <div className="table-wrap scroll-list">
             <table>
               <thead><tr><th>Data</th><th>Turma</th><th>Hora</th><th>Status</th></tr></thead>
               <tbody>
-                {[...presencas].reverse().slice(0, 8).map((p) => (
+                {[...presencas].reverse().slice(0, 15).map((p) => (
                   <tr key={p.id}>
                     <td>{new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")}</td>
                     <td>{turmas.find((t) => t.id === p.turma_id)?.nome || "—"}</td>
@@ -517,6 +350,8 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
   const [formTurma, setFormTurma] = useState({ id: null, nome: "", horario: "", dias: "" });
   const [salvando, setSalvando] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
+
+  const TODAY = getToday();
 
   useEffect(() => {
     const handlePopState = () => {
@@ -546,7 +381,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
 
   const presencasHoje = alunos.filter((a) => a.presencas?.some((p) => p.data === TODAY));
   const faltasHoje = alunos.length - presencasHoje.length;
-  const freqMedia = alunos.length ? Math.round(alunos.reduce((s, a) => s + calcFreq(a).pct, 0) / alunos.length) : 0;
+  const freqMedia = alunos.length ? Math.round(alunos.reduce((s, a) => s + calcFreq(a, turmas).pct, 0) / alunos.length) : 0;
   const alunosFiltrados = filtroTurma === "Todas" ? alunos : alunos.filter((a) => turmas.find((t) => t.id === a.turma_id)?.nome === filtroTurma);
 
   const abrirModalAlunoNovo = () => {
@@ -572,7 +407,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         faixa: formAluno.faixa, 
         graus: parseInt(formAluno.graus), 
         turma_id: formAluno.turma_id,
-        academia_id: academiaAtual?.id // <-- Vínculo Inteligente com a academia
+        academia_id: academiaAtual?.id
       };
       if (formAluno.id) { await db.patch("alunos", formAluno.id, payload); if (detalhe?.id === formAluno.id) setDetalhe({ ...detalhe, ...payload }); }
       else await db.post("alunos", payload);
@@ -600,7 +435,6 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
 
   return (
     <div className="main">
-      {/* MODAL SAIR */}
       {showExitModal && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ textAlign: "center" }}>
@@ -614,7 +448,6 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </div>
       )}
 
-      {/* MODAL ALUNO */}
       {modalAlunoOpen && (
         <div className="modal-overlay">
           <div className="modal-box">
@@ -633,7 +466,6 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </div>
       )}
 
-      {/* MODAL TURMA */}
       {modalTurmaOpen && (
         <div className="modal-overlay">
           <div className="modal-box">
@@ -649,7 +481,6 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         </div>
       )}
 
-      {/* DETAIL PANEL */}
       {detalhe && (
         <>
           <div className="modal-overlay" onClick={() => setDetalhe(null)} style={{ background: "rgba(0,0,0,0.5)", zIndex: 199 }} />
@@ -669,12 +500,14 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
             </div>
             <div style={{ marginBottom: "20px" }}>
               <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "0.9rem", color: "var(--muted)", marginBottom: "10px" }}>ÚLTIMAS PRESENÇAS</div>
-              {detalhe.presencas?.length > 0 ? [...detalhe.presencas].reverse().slice(0, 6).map((p) => (
-                <div key={p.id} style={{ fontSize: "0.8rem", padding: "8px 0", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between" }}>
-                  <span>{new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                  <span style={{ color: "var(--green)" }}>{p.hora?.substring(0, 5)}</span>
-                </div>
-              )) : <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Nenhuma presença ainda.</p>}
+              <div className="scroll-list" style={{ maxHeight: '200px' }}>
+                {detalhe.presencas?.length > 0 ? [...detalhe.presencas].reverse().map((p) => (
+                  <div key={p.id} style={{ fontSize: "0.8rem", padding: "8px 0", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between" }}>
+                    <span>{new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                    <span style={{ color: "var(--green)" }}>{p.hora?.substring(0, 5)}</span>
+                  </div>
+                )) : <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Nenhuma presença ainda.</p>}
+              </div>
             </div>
             <div style={{ marginTop: "auto", display: "flex", gap: "12px", flexDirection: "column" }}>
               <button className="btn-primary" style={{ padding: "10px", fontSize: "1rem" }} onClick={() => abrirModalAlunoEditar(detalhe)}>✏️ EDITAR DADOS</button>
@@ -709,28 +542,32 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
           <div className="grid-2">
             <div className="card">
               <div className="section-title">Frequência da Academia</div>
-              {alunos.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhum aluno cadastrado ainda.</p>
-                : alunos.map((a) => { const f = calcFreq(a); return (
-                  <div key={a.id} style={{ marginBottom: "14px", cursor: "pointer" }} onClick={() => setDetalhe(a)}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px", fontSize: "0.83rem" }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: "8px" }}><span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />{a.nome}</span>
-                      <span style={{ color: f.pct >= 75 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>{f.pct}%</span>
+              <div className="scroll-list">
+                {alunos.length === 0 ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhum aluno cadastrado ainda.</p>
+                  : alunos.map((a) => { const f = calcFreq(a, turmas); return (
+                    <div key={a.id} style={{ marginBottom: "14px", cursor: "pointer" }} onClick={() => setDetalhe(a)}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px", fontSize: "0.83rem" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}><span className="badge-faixa" style={{ background: FAIXA_COLORS[a.faixa] }} />{a.nome}</span>
+                        <span style={{ color: f.pct >= 75 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>{f.pct}%</span>
+                      </div>
+                      <div className="prog-bar"><div className="prog-fill" style={{ width: `${f.pct}%`, background: f.pct >= 75 ? "var(--green)" : f.pct >= 60 ? "var(--gold)" : "var(--red)" }} /></div>
                     </div>
-                    <div className="prog-bar"><div className="prog-fill" style={{ width: `${f.pct}%`, background: f.pct >= 75 ? "var(--green)" : f.pct >= 60 ? "var(--gold)" : "var(--red)" }} /></div>
-                  </div>
-                ); })}
+                  ); })}
+              </div>
             </div>
             <div className="card">
               <div className="section-title">Alunos em Risco ⚠️</div>
-              {alunos.filter((a) => calcFreq(a).pct < 70).length === 0
-                ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhum aluno em risco. 🎉</p>
-                : alunos.filter((a) => calcFreq(a).pct < 70).map((a) => { const f = calcFreq(a); return (
-                  <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
-                    <div className="avatar" style={{ background: "var(--red-dim)" }}>{a.foto}</div>
-                    <div><div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{f.total - f.presentes} faltas · {turmas.find((t) => t.id === a.turma_id)?.nome}</div></div>
-                    <span style={{ marginLeft: "auto", color: "var(--red)", fontWeight: 700 }}>{f.pct}%</span>
-                  </div>
-                ); })}
+              <div className="scroll-list">
+                {alunos.filter((a) => calcFreq(a, turmas).pct < 70).length === 0
+                  ? <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Nenhum aluno em risco. 🎉</p>
+                  : alunos.filter((a) => calcFreq(a, turmas).pct < 70).map((a) => { const f = calcFreq(a, turmas); return (
+                    <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
+                      <div className="avatar" style={{ background: "var(--red-dim)" }}>{a.foto}</div>
+                      <div><div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{f.total - f.presentes} faltas · {turmas.find((t) => t.id === a.turma_id)?.nome}</div></div>
+                      <span style={{ marginLeft: "auto", color: "var(--red)", fontWeight: 700 }}>{f.pct}%</span>
+                    </div>
+                  ); })}
+              </div>
             </div>
           </div>
         </>
@@ -741,28 +578,32 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
         <div className="grid-2">
           <div className="card">
             <div className="section-title" style={{ color: "var(--green)" }}>✓ Presentes ({presencasHoje.length})</div>
-            {presencasHoje.length === 0 && <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Ninguém fez check-in ainda.</p>}
-            {presencasHoje.map((a) => {
-              const p = a.presencas.find((x) => x.data === TODAY);
-              return (
-                <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
-                  <div className="avatar" style={{ background: "#14532d", color: "#4ade80" }}>{a.foto}</div>
-                  <div style={{ flex: 1 }}><div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{turmas.find((t) => t.id === p?.turma_id)?.nome} · {p?.hora?.substring(0, 5)}</div></div>
-                  <button onClick={(e) => { e.stopPropagation(); togglePresencaManual(a); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem" }} title="Remover presença">❌</button>
-                </div>
-              );
-            })}
+            <div className="scroll-list">
+              {presencasHoje.length === 0 && <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Ninguém fez check-in ainda.</p>}
+              {presencasHoje.map((a) => {
+                const p = a.presencas.find((x) => x.data === TODAY);
+                return (
+                  <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
+                    <div className="avatar" style={{ background: "#14532d", color: "#4ade80" }}>{a.foto}</div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{turmas.find((t) => t.id === p?.turma_id)?.nome} · {p?.hora?.substring(0, 5)}</div></div>
+                    <button onClick={(e) => { e.stopPropagation(); togglePresencaManual(a); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem" }} title="Remover presença">❌</button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
           <div className="card">
             <div className="section-title" style={{ color: "var(--red)" }}>✗ Ausentes ({faltasHoje})</div>
-            {faltasHoje === 0 && alunos.length > 0 && <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Todos estão presentes! 🎉</p>}
-            {alunos.filter((a) => !a.presencas?.some((p) => p.data === TODAY)).map((a) => (
-              <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
-                <div className="avatar" style={{ background: "#450a0a", color: "#f87171" }}>{a.foto}</div>
-                <div style={{ flex: 1 }}><div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{turmas.find((t) => t.id === a.turma_id)?.nome}</div></div>
-                <button onClick={(e) => { e.stopPropagation(); togglePresencaManual(a); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem" }} title="Dar presença manual">✅</button>
-              </div>
-            ))}
+            <div className="scroll-list">
+              {faltasHoje === 0 && alunos.length > 0 && <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Todos estão presentes! 🎉</p>}
+              {alunos.filter((a) => !a.presencas?.some((p) => p.data === TODAY)).map((a) => (
+                <div key={a.id} className="hoje-item" onClick={() => setDetalhe(a)}>
+                  <div className="avatar" style={{ background: "#450a0a", color: "#f87171" }}>{a.foto}</div>
+                  <div style={{ flex: 1 }}><div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{a.nome}</div><div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{turmas.find((t) => t.id === a.turma_id)?.nome}</div></div>
+                  <button onClick={(e) => { e.stopPropagation(); togglePresencaManual(a); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem" }} title="Dar presença manual">✅</button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -807,7 +648,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
           {alunosFiltrados.length === 0
             ? <p style={{ color: "var(--muted)" }}>Nenhum aluno nesta turma.</p>
             : (
-              <div className="table-wrap">
+              <div className="table-wrap scroll-list" style={{ paddingRight: 0 }}>
                 <table>
                   <thead><tr><th>Aluno</th><th>Faixa e Grau</th><th>Turma</th><th>Ações</th></tr></thead>
                   <tbody>
@@ -838,7 +679,7 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
               <div className="section-title" style={{ margin: 0 }}>Gerenciar Turmas</div>
               <button className="btn-primary" style={{ width: "auto", padding: "6px 14px", fontSize: "0.85rem" }} onClick={abrirModalTurmaNova}>+ NOVA TURMA</button>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div className="scroll-list" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               {turmas.length === 0 && <p style={{ color: "var(--muted)" }}>Nenhuma turma nesta unidade.</p>}
               {turmas.map((t) => (
                 <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface2)", gap: "12px", flexWrap: "wrap" }}>
@@ -860,46 +701,32 @@ function AdminView({ turmas, alunos, carregarBanco, academiaAtual }) {
 // ─── ROOT ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [session, setSession] = useState(() => store.get("osstrack_session"));
-  
-  // ESTADOS DO MULTI-TENANCY 
   const [academias, setAcademias] = useState([]);
-  
-  // LÊ A ACADEMIA SALVA APENAS SE FOR ADMIN
   const [academiaAtual, setAcademiaAtual] = useState(() => store.get("osstrack_admin_academia") || null);
-  
-  // A CHAVE DO LOGIN GLOBAL
   const [todosAlunos, setTodosAlunos] = useState([]); 
-  
   const [turmas, setTurmas] = useState([]);
   const [alunos, setAlunos] = useState([]);
   const [dbStatus, setDbStatus] = useState("loading");
   const [dbErro, setDbErro] = useState("");
 
-  // Salva sessão no navegador
   useEffect(() => {
     if (session) store.set("osstrack_session", session);
     else store.remove("osstrack_session");
   }, [session]);
 
-  // Salva academia no navegador APENAS se quem estiver usando for o Admin
   useEffect(() => {
     if (academiaAtual && session?.role === "admin") {
       store.set("osstrack_admin_academia", academiaAtual);
     }
   }, [academiaAtual, session]);
 
-  // MOTOR DE BUSCA OTIMIZADO
   const carregarBanco = async (idForcado = null) => {
     try {
       setDbStatus("loading");
       
-      // 1. Carrega as academias
       const academiasData = await db.get("academias", "?order=nome");
-      if (Array.isArray(academiasData)) {
-        setAcademias(academiasData);
-      }
+      if (Array.isArray(academiasData)) setAcademias(academiasData);
 
-      // 2. Busca todos os alunos globalmente
       const todosOsAlunosData = await db.get("alunos", "?select=*,presencas(*)&order=nome");
       let listaGlobal = [];
       if (Array.isArray(todosOsAlunosData)) {
@@ -912,28 +739,21 @@ export default function App() {
       }
 
       let idAtivo = idForcado;
-
-      // ─── A CORREÇÃO DE FERRO AQUI ──────────────────────────────
       if (!idAtivo) {
         if (session?.role === "aluno") {
-          // Se for aluno, o app É OBRIGADO a olhar para a academia DELE
           const meuPerfil = listaGlobal.find(a => a.id === session.alunoId);
           if (meuPerfil) idAtivo = meuPerfil.academia_id;
         } else {
-          // Se for Admin ou se acabou de deslogar, força a leitura da memória do navegador!
-          // Isso ignora completamente a academia "suja" que o aluno deixou na memória temporária do React
           const memoriaAdmin = store.get("osstrack_admin_academia");
           idAtivo = memoriaAdmin?.id || (academiasData && academiasData.length > 0 ? academiasData[0].id : null);
         }
       }
-      // ───────────────────────────────────────────────────────────
 
       if (idAtivo && Array.isArray(academiasData)) {
         const novaAtual = academiasData.find(a => a.id === idAtivo);
         if (novaAtual) setAcademiaAtual(novaAtual);
       }
 
-      // Se não tem academia nenhuma no banco, encerra a busca com a tela limpa
       if (!idAtivo) {
          setTurmas([]);
          setAlunos([]);
@@ -941,12 +761,10 @@ export default function App() {
          return;
       }
 
-      // 3. Busca Turmas filtrando por Academia
       const turmasData = await db.get("turmas", `?academia_id=eq.${idAtivo}&order=created_at`);
       if (!Array.isArray(turmasData)) throw new Error(turmasData?.message || "Erro nas turmas");
       setTurmas(turmasData);
 
-      // 4. Filtra localmente os alunos apenas para a Academia Ativa (Painel Admin)
       const alunosDaAcademia = listaGlobal.filter(a => a.academia_id === idAtivo);
       setAlunos(alunosDaAcademia); 
       
@@ -957,16 +775,12 @@ export default function App() {
     }
   };
 
-  // Roda assim que o app liga E sempre que alguém fizer Login/Logout
-  useEffect(() => { 
-    carregarBanco(); 
-  }, [session?.role, session?.alunoId]);
+  useEffect(() => { carregarBanco(); }, [session?.role, session?.alunoId]);
 
   const alunoLogado = session?.role === "aluno" ? todosAlunos.find((a) => a.id === session.alunoId) : null;
 
   return (
     <>
-      <style>{css}</style>
       <div className="app">
         <DbStatusBar status={dbStatus} turmasCount={turmas.length} erro={dbErro} />
         {!session ? (
@@ -976,8 +790,6 @@ export default function App() {
             <nav className="topnav">
               <div className="nav-logo">OSS<span>.</span>TRACK</div>
               <div className="nav-right">
-                
-                {/* MENU DE ACADEMIAS */}
                 {session.role === "admin" && academias.length > 0 && (
                   <select 
                     className="academy-select"
@@ -985,15 +797,12 @@ export default function App() {
                     onChange={(e) => {
                       const nova = academias.find(a => a.id === e.target.value);
                       setAcademiaAtual(nova);
-                      carregarBanco(nova.id); // Força a buscar os dados da nova unidade na hora
+                      carregarBanco(nova.id); 
                     }}
                   >
-                    {academias.map(a => (
-                      <option key={a.id} value={a.id}>{a.nome}</option>
-                    ))}
+                    {academias.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
                   </select>
                 )}
-
                 <span className="nav-user">{session.username} · {session.role === "admin" ? "Admin" : "Aluno"}</span>
                 <button className="btn-logout" onClick={() => setSession(null)}>Sair</button>
               </div>
