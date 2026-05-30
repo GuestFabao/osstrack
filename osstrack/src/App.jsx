@@ -16,9 +16,9 @@ const FAIXA_COLORS = {
 };
 
 const PLANOS = [
-  { nome: "Adulto",  valor: 150.00 },
-  { nome: "Kids",    valor: 120.00  },
-  { nome: "Família", valor: 250.00 },
+  { nome: "Adulto",  valor: 100.00 },
+  { nome: "Kids",    valor: 80.00  },
+  { nome: "Família", valor: 150.00 },
 ];
 
 const getToday = () => {
@@ -423,6 +423,9 @@ function AlunoView({ aluno, turmas, carregarBanco, activeTab }) {
             Faixa <span style={{color:FAIXA_COLORS[aluno.faixa]||"#ccc"}}>{aluno.faixa}</span> ({aluno.graus||0} Graus)
             &nbsp;·&nbsp;{turmaAluno?.nome||"Sem turma"}
           </div>
+          {turmaAluno?.professor && (
+            <div style={{fontSize:"0.75rem",color:"var(--gold)",marginTop:"3px"}}>👤 {turmaAluno.professor}</div>
+          )}
           {aluno.data_nascimento && (
             <div style={{fontSize:"0.75rem",color:"var(--muted)",marginTop:"4px"}}>
               🎂 {new Date(aluno.data_nascimento+"T12:00:00").toLocaleDateString("pt-BR",{day:"numeric",month:"long"})}
@@ -451,7 +454,11 @@ function AlunoView({ aluno, turmas, carregarBanco, activeTab }) {
                 <span className="checkin-text">{btnText}</span>
                 <span className="checkin-sub">{btnSub}</span>
               </button>
-              <div className="aula-info">{turmaAluno?<>A sua turma: <strong>{turmaAluno.nome}</strong> · {turmaAluno.horario}</>:"Sem turma vinculada 🥋"}</div>
+              <div className="aula-info">
+                {turmaAluno
+                  ? <>A sua turma: <strong>{turmaAluno.nome}</strong> · {turmaAluno.horario}{turmaAluno.professor && <><br/><span style={{color:"var(--muted)"}}>👤 {turmaAluno.professor}</span></>}</>
+                  : "Sem turma vinculada 🥋"}
+              </div>
             </div>
           </div>
           <div className="card">
@@ -505,7 +512,7 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
   const [modalAlunoOpen, setModalAlunoOpen] = useState(false);
   const [formAluno, setFormAluno] = useState({ id:null, nome:"", faixa:"Branca", graus:"0", turma_id:"", data_nascimento:"", telefone:"", plano:"Adulto", valor_mensalidade:"100.00" });
   const [modalTurmaOpen, setModalTurmaOpen] = useState(false);
-  const [formTurma, setFormTurma] = useState({ id:null, nome:"", horario:"", dias:"" });
+  const [formTurma, setFormTurma] = useState({ id:null, nome:"", horario:"", dias:"", professor:"" });
   const [salvando, setSalvando] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const TODAY = getToday();
@@ -580,15 +587,15 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
     } catch(err) { alert("Erro: "+err.message); } finally { setSalvando(false); }
   };
 
-  const abrirModalTurmaNova  = () => { setFormTurma({ id:null, nome:"", horario:"", dias:"" }); setModalTurmaOpen(true); };
-  const abrirModalTurmaEditar = (t) => { setFormTurma({ id:t.id, nome:t.nome, horario:t.horario, dias:t.dias }); setModalTurmaOpen(true); };
+  const abrirModalTurmaNova  = () => { setFormTurma({ id:null, nome:"", horario:"", dias:"", professor:"" }); setModalTurmaOpen(true); };
+  const abrirModalTurmaEditar = (t) => { setFormTurma({ id:t.id, nome:t.nome, horario:t.horario, dias:t.dias, professor:t.professor||"" }); setModalTurmaOpen(true); };
   const salvarTurma = async (e) => {
     e.preventDefault();
     if (!formTurma.nome||!formTurma.horario) return alert("Nome e horário são obrigatórios!");
     setSalvando(true);
     try {
-      if (formTurma.id) await db.patch("turmas",formTurma.id,{ nome:formTurma.nome, horario:formTurma.horario, dias:formTurma.dias });
-      else await db.post("turmas",{ nome:formTurma.nome, horario:formTurma.horario, dias:formTurma.dias, academia_id:academiaAtual?.id });
+      if (formTurma.id) await db.patch("turmas",formTurma.id,{ nome:formTurma.nome, horario:formTurma.horario, dias:formTurma.dias, professor:formTurma.professor||null });
+      else await db.post("turmas",{ nome:formTurma.nome, horario:formTurma.horario, dias:formTurma.dias, professor:formTurma.professor||null, academia_id:academiaAtual?.id });
       await carregarBanco(); setModalTurmaOpen(false);
     } catch(err) { alert("Erro: "+err.message); } finally { setSalvando(false); }
   };
@@ -704,6 +711,7 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
               <div className="input-group"><label>Nome</label><input autoFocus value={formTurma.nome} onChange={e=>setFormTurma({...formTurma,nome:e.target.value})} placeholder="Ex: Manhã"/></div>
               <div className="input-group"><label>Horário</label><input value={formTurma.horario} onChange={e=>setFormTurma({...formTurma,horario:e.target.value})} placeholder="Ex: 07:00 – 08:30"/></div>
               <div className="input-group"><label>Dias da Semana</label><input value={formTurma.dias} onChange={e=>setFormTurma({...formTurma,dias:e.target.value})} placeholder="Ex: Seg / Qua / Sex"/></div>
+              <div className="input-group"><label>Professor 👤</label><input value={formTurma.professor} onChange={e=>setFormTurma({...formTurma,professor:e.target.value})} placeholder="Ex: Prof. Diego Rocha"/></div>
               <button type="submit" className="btn-primary" style={{marginTop:"16px"}} disabled={salvando}>{salvando?"A GUARDAR...":"SALVAR"}</button>
             </form>
           </div>
@@ -903,7 +911,7 @@ function AdminView({ turmas, alunos, mensalidades, carregarBanco, academiaAtual,
           {turmas.map(t=>{ const q=alunos.filter(a=>a.turma_id===t.id).length; return (
             <div key={t.id} className="card" style={{display:"flex",alignItems:"center",gap:"14px"}}>
               <div style={{fontSize:"1.6rem"}}>🥋</div>
-              <div><div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:"1.1rem",letterSpacing:"1px"}}>{t.nome}</div><div style={{fontSize:"0.78rem",color:"var(--muted)",marginTop:"2px"}}>{t.horario} · {t.dias}</div></div>
+              <div><div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:"1.1rem",letterSpacing:"1px"}}>{t.nome}</div><div style={{fontSize:"0.78rem",color:"var(--muted)",marginTop:"2px"}}>{t.horario} · {t.dias}</div>{t.professor&&<div style={{fontSize:"0.75rem",color:"var(--gold)",marginTop:"2px"}}>👤 {t.professor}</div>}</div>
               <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:"16px"}}>
                 <div style={{textAlign:"right"}}><div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:"1.4rem",color:"var(--gold)"}}>{q}</div><div style={{fontSize:"0.7rem",color:"var(--muted)"}}>alunos</div></div>
                 <button className="filter-btn" onClick={()=>abrirModalTurmaEditar(t)}>✏️ Editar</button>

@@ -29,7 +29,7 @@ body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-s
 .topnav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 70px; flex-shrink: 0; z-index: 100; }
 .nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 2px; display: flex; gap: 4px; }
 .nav-logo span { color: var(--red); }
-.nav-academy-badge { background: var(--surface2); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; color: var(--muted); margin-left: 12px; }
+.nav-academy-badge { background: var(--surface2); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; color: var(--muted); margin-left: 12px; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hamburger { display: none; flex-direction: column; gap: 5px; background: none; border: none; cursor: pointer; padding: 4px; }
 .hamburger span { width: 24px; height: 2px; background: var(--text); border-radius: 2px; }
 
@@ -51,20 +51,21 @@ body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-s
 /* ─── SIDEBAR LADO ESQUERDO ─── */
 .sidebar { width: 280px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; z-index: 150; transition: transform 0.3s ease; }
 .sidebar-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: none; }
-.sidebar-profile { padding: 24px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-.sidebar-avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: bold; }
-.sidebar-username { font-weight: 600; font-size: 0.95rem; }
-.sidebar-role { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
-
-.sidebar-nav { flex: 1; overflow-y: auto; padding: 0 12px; display: flex; flex-direction: column; gap: 4px; }
-.sidebar-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px; color: var(--muted); border: none; background: transparent; font-family: inherit; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; font-weight: 500; width: 100%; text-align: left; }
-.sidebar-item:hover:not(.locked) { background: var(--surface2); color: var(--text); }
-.sidebar-item.active { background: var(--red); color: white; }
+.sidebar-profile { padding: 20px 24px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.sidebar-avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: bold; flex-shrink: 0; border: 2px solid var(--red-dim); }
+.sidebar-username { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.sidebar-role { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 3px; }
+.sidebar-badge { background: var(--red); color: white; font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; margin-left: auto; min-width: 20px; text-align: center; }
+.sidebar-nav { flex: 1; overflow-y: auto; padding: 0 12px; display: flex; flex-direction: column; gap: 2px; }
+.sidebar-item { display: flex; align-items: center; gap: 12px; padding: 11px 16px; border-radius: 8px; color: var(--muted); border: none; background: transparent; font-family: inherit; font-size: 0.9rem; cursor: pointer; transition: all 0.15s; font-weight: 500; width: 100%; text-align: left; }
+.sidebar-item:hover:not(.locked) { background: var(--surface2); color: var(--text); transform: translateX(2px); }
+.sidebar-item.active { background: var(--red); color: white; box-shadow: 0 2px 12px rgba(220,38,38,0.3); }
+.sidebar-item.active:hover { transform: none; }
 .sidebar-item.locked { opacity: 0.4; cursor: not-allowed; justify-content: space-between; }
-.sidebar-item-icon { font-size: 1.1rem; width: 24px; text-align: center; }
+.sidebar-item-icon { font-size: 1rem; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; line-height: 1; }
 .sidebar-badge { background: var(--red); color: white; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; margin-left: auto; }
 
-.sidebar-footer { padding: 16px 12px; border-top: 1px solid var(--border); }
+.sidebar-footer { padding: 12px; border-top: 1px solid var(--border); margin-top: auto; }
 .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 140; }
 
 /* ─── ACADEMY SELECT ─── */
